@@ -13,9 +13,9 @@ lazy val `root` = (project in file("."))
       "io.circe" %% "circe-literal" % "0.14.9",
       "org.scalacheck" %% "scalacheck" % "1.17.0" % Test
     ),
-    testFrameworks += new TestFramework("utest.runner.Framework")
+    testFrameworks += new TestFramework("utest.runner.Framework"),
+    publishTo := sonatypePublishToBundle.value
   )
-
 scalacOptions ++= Seq(
   "-deprecation",
   "-encoding",
