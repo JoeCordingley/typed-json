@@ -1,3 +1,7 @@
+import xerial.sbt.Sonatype._
+
+ThisBuild / sonatypeCredentialHost := sonatypeCentralHost
+
 lazy val `root` = (project in file("."))
   .settings(
     organization := "com.joecordingley",
@@ -14,7 +18,13 @@ lazy val `root` = (project in file("."))
       "org.scalacheck" %% "scalacheck" % "1.17.0" % Test
     ),
     testFrameworks += new TestFramework("utest.runner.Framework"),
-    publishTo := sonatypePublishToBundle.value
+    isSnapshot := false,
+    publishTo := sonatypePublishToBundle.value,
+    sonatypeProjectHosting := Some(
+      GitHubHosting("JoeCordingley", "typed-json", "joewcordingley@gmail.com")
+    ),
+    sonatypeProfileName := "com.joecordingley",
+    publishMavenStyle := true
   )
 scalacOptions ++= Seq(
   "-deprecation",
