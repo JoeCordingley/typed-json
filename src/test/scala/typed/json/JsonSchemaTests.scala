@@ -403,7 +403,7 @@ object JsonSchemaTests extends TestSuite {
         "const": "value"
       }""")
     }
-    test("enum") {
+    test("string enum") {
       val schemaJson =
         JsonSchemaCodec.of[Either["first case", "second case"]].asJson
       val expectedSchema = (`enum`: Json) => parse(s"""{
@@ -424,29 +424,24 @@ object JsonSchemaTests extends TestSuite {
         Right(schemaJson) == maybeEnum(schemaJson).flatMap(expectedSchema)
       )
     }
-//    test("schemaType") {
-//      val schemaJson = JsonSchemaCodec.of[SchemaType].asJson
-//      val expectedSchema = (`enum`: Json) => parse("""{
-//        "enum": ${`enum`}
-//      }""")
-//      val maybeEnum = Decoder[Json].at("enum").decodeJson
-//      assert(SchemaType.Object.asJson == json""""object"""")
-//      assert(
-//        maybeEnum(schemaJson).flatMap(_.as[StrictSet[String]]) == Right(
-//          StrictSet(
-//            Set(
-//              "string",
-//              "object",
-//              "integer",
-//              "boolean",
-//              "null",
-//              "array",
-//              "number"
-//            )
-//          )
-//        )
-//      )
-//
-//    }
+    test("refs") {
+      type Name = Referenced["name", String]
+
+      val schemaJson =
+        JsonSchemaCodec
+          .of[JsonObject[(("first-name", Name), ("second-name", Name))]]
+
+      val expectedSchema = json"""{
+        "type": "object",
+        "properties": {
+          "first-name": { "$$def", #/$$defs/name},
+          "second-name": { "$$def", #/$$defs/name}
+        },
+        "$$defs": {
+          "name": { "type": "string"}
+        }
+      }"""
+      assert(schemaJson == expectedSchema)
+    }
   }
 }
