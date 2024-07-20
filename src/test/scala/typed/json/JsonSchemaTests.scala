@@ -81,9 +81,7 @@ object JsonSchemaTests extends TestSuite {
       """).toOption.get)
     }
     test("string or null") {
-      val schema = JsonSchemaCodec
-        .fromJsonSchema(summon[SchemaOf[Either[String, JsonNull]]].apply)
-        .asJson
+      val schema = JsonSchemaCodec.of[Either[String, JsonNull]].asJson
       val expectedSchema = (`type`: Json) => parse(s"""{
           "type": ${`type`}
         }""")
@@ -426,21 +424,32 @@ object JsonSchemaTests extends TestSuite {
     }
     test("refs") {
       type Name = Referenced["name", String]
+      type Codec = JsonObject[(("first-name", Name), ("second-name", Name))]
 
       val schemaJson =
         JsonSchemaCodec
-          .of[JsonObject[(("first-name", Name), ("second-name", Name))]]
+          .of[Codec]
+          .asJson
 
-      val expectedSchema = json"""{
-        "type": "object",
-        "properties": {
-          "first-name": { "$$def", #/$$defs/name},
-          "second-name": { "$$def", #/$$defs/name}
-        },
-        "$$defs": {
-          "name": { "type": "string"}
+      val expectedSchema = json"""
+        {
+          "type": "object",
+          "properties": {
+            "first-name": {
+              "$$ref": "#/$$defs/name"
+            },
+            "second-name": {
+              "$$ref": "#/$$defs/name"
+            }
+          },
+          "required": ["first-name", "second-name"],
+          "$$defs": {
+            "name": {
+              "type": "string"
+            }
+          }
         }
-      }"""
+      """
       assert(schemaJson == expectedSchema)
     }
   }
