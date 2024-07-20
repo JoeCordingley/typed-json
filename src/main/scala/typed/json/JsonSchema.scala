@@ -88,8 +88,8 @@ object JsonSchema:
         format.isEmpty && minLength.isEmpty && maxLength.isEmpty
       case Object(properties, required, additionalProperties) =>
         properties.isEmpty && required.isEmpty && additionalProperties.isEmpty
-      case Array(AnyOf(List(JsonSchema.Singular.True))) => true
-      case _                                            => true
+      case Array(AnyOf(schemas)) => schemas == List(JsonSchema.Singular.True)
+      case _                     => true
     }
     def describedByTypeAlone(singular: Singular): Option[SchemaType] =
       if isSimple(singular) then SchemaType.fromSingular(singular) else None
