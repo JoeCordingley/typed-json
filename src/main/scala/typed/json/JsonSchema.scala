@@ -8,20 +8,33 @@ import io.circe
 import cats.syntax.all.*
 import cats.data.{Kleisli, Reader}
 
-type SchemaType = Either["string", Either["object", Either[
-  "integer",
-  Either["boolean", Either["null", Either["array", "number"]]]
-]]]
+enum SchemaType:
+  case String
+  case Object
+  case Integer
+  case Boolean
+  case Null
+  case Array
+  case Number
 
 object SchemaType:
-
-  val String: SchemaType = Left("string")
-  val Object: SchemaType = Right(Left("object"))
-  val Integer: SchemaType = Right(Right(Left("integer")))
-  val Boolean: SchemaType = Right(Right(Right(Left("boolean"))))
-  val Null: SchemaType = Right(Right(Right(Right(Left("null")))))
-  val Array: SchemaType = Right(Right(Right(Right(Right(Left("array"))))))
-  val Number: SchemaType = Right(Right(Right(Right(Right(Right("number"))))))
+  given Encoder[SchemaType] =
+    Encoder[String].contramap {
+      case String  => "string"
+      case Object  => "object"
+      case Integer => "integer"
+      case Boolean => "boolean"
+      case Null    => "null"
+      case Array   => "array"
+      case Number  => "number"
+    }
+  given SchemaOf[SchemaType] with
+    def apply: JsonSchema = JsonSchema(
+      anyOf = JsonSchema.AnyOf(
+        SchemaType.values.toList.map(s => JsonSchema.Singular.Const(s.asJson))
+      ),
+      defs = Map.empty
+    )
 
   def fromSingular: JsonSchema.Singular => Option[SchemaType] = {
     case _: JsonSchema.Singular.String => Some(String)
