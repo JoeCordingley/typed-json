@@ -47,8 +47,13 @@ object JsonSchemaTests extends TestSuite {
     test("custom format string") {
       case class MyStringFormat(value: String)
       given SchemaOf[MyStringFormat] with
-        def apply: JsonSchema =
-          JsonSchema.string(minLength = Some(5), maxLength = Some(10))
+        def apply: WithDefs[JsonSchema.AnyOf] =
+          WithDefs.pure(
+            JsonSchema.AnyOf(
+              JsonSchema.Singular
+                .String(minLength = Some(5), maxLength = Some(10))
+            )
+          )
       testFixed[MyStringFormat](json"""{
         "type": "string",
         "minLength": 5,
@@ -361,9 +366,9 @@ object JsonSchemaTests extends TestSuite {
     test("email or minLength") {
       type MyStringFormat
       given SchemaOf[MyStringFormat] with
-        def apply: JsonSchema =
-          JsonSchema.string(
-            minLength = Some(5)
+        def apply: WithDefs[JsonSchema.AnyOf] =
+          WithDefs.pure(
+            JsonSchema.AnyOf(JsonSchema.Singular.String(minLength = Some(5)))
           )
       val schemaJson = JsonSchemaCodec.of[Either[MyStringFormat, Email]].asJson
       val expectedSchema = (anyOf: Json) => parse(s"""{
@@ -424,11 +429,10 @@ object JsonSchemaTests extends TestSuite {
     }
     test("refs") {
       type Name = Referenced["name", String]
-      type Codec = JsonObject[(("first-name", Name), ("second-name", Name))]
 
       val schemaJson =
         JsonSchemaCodec
-          .of[Codec]
+          .of[JsonObject[(("first-name", Name), ("second-name", Name))]]
           .asJson
 
       val expectedSchema = json"""
@@ -445,6 +449,49 @@ object JsonSchemaTests extends TestSuite {
           "required": ["first-name", "second-name"],
           "$$defs": {
             "name": {
+              "type": "string"
+            }
+          }
+        }
+      """
+      assert(schemaJson == expectedSchema)
+    }
+    test("nested refs") {
+      type Inner = Referenced["inner", String]
+      type Middle =
+        Referenced["middle", JsonObject[(("a", Inner), ("b", Inner))]]
+
+      val schemaJson =
+        JsonSchemaCodec
+          .of[JsonObject[(("1", Middle), ("2", Middle))]]
+          .asJson
+
+      val expectedSchema = json"""
+        {
+          "type": "object",
+          "properties": {
+            "1": {
+              "$$ref": "#/$$defs/middle"
+            },
+            "2": {
+              "$$ref": "#/$$defs/middle"
+            }
+          },
+          "required": ["1", "2"],
+          "$$defs": {
+            "middle": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "$$ref": "#/$$defs/inner"
+                },
+                "b": {
+                  "$$ref": "#/$$defs/inner"
+                }
+              },
+              "required": ["a", "b"]
+            },
+            "inner": {
               "type": "string"
             }
           }
