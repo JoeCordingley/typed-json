@@ -50,7 +50,7 @@ object SchemaType:
 type JsonSchemaCodec = Fix[JsonSchemaCodec.Unfixed]
 case class JsonSchema(
     anyOf: JsonSchema.AnyOf,
-    defs: Map[String, JsonSchema.AnyOf]
+    defs: Map[String, JsonSchema.AnyOf] = Map.empty
 )
 
 object JsonSchema:
@@ -59,6 +59,8 @@ object JsonSchema:
     left.defs ++ right.defs
   )
   case class AnyOf(schemas: List[JsonSchema.Singular])
+  object AnyOf:
+    def apply(schemas: Singular*): AnyOf = AnyOf(List(schemas*))
 
   enum Singular:
     case String(
@@ -99,44 +101,32 @@ object JsonSchema:
       minLength: Option[Int] = None,
       maxLength: Option[Int] = None
   ): JsonSchema =
-    JsonSchema.fromSingular(
-      JsonSchema.Singular.String(format, minLength, maxLength)
-    )
+    JsonSchema(AnyOf(Singular.String(format, minLength, maxLength)))
   val integer: JsonSchema =
-    JsonSchema.fromSingular(JsonSchema.Singular.Integer)
+    JsonSchema(AnyOf(Singular.Integer))
   val boolean: JsonSchema =
-    JsonSchema.fromSingular(JsonSchema.Singular.Boolean)
+    JsonSchema(AnyOf(Singular.Boolean))
   val `null`: JsonSchema =
-    JsonSchema.fromSingular(JsonSchema.Singular.Null)
+    JsonSchema(AnyOf(Singular.Null))
   def `object`(
       properties: Option[Map[String, AnyOf]] = None,
       required: Option[List[String]] = None,
       additionalProperties: Option[AnyOf] = None,
       defs: Map[String, AnyOf] = Map.empty
   ): JsonSchema =
-    JsonSchema.fromSingular(
-      JsonSchema.Singular.Object(
-        properties,
-        required,
-        additionalProperties
-      ),
+    JsonSchema(
+      AnyOf(Singular.Object(properties, required, additionalProperties)),
       defs
     )
 
   def const(value: circe.Json): JsonSchema =
-    JsonSchema.fromSingular(JsonSchema.Singular.Const(value))
+    JsonSchema(AnyOf(JsonSchema.Singular.Const(value)))
   val `true`: JsonSchema =
-    JsonSchema.fromSingular(JsonSchema.Singular.True)
+    JsonSchema(AnyOf(Singular.True))
   val `number`: JsonSchema =
-    JsonSchema.fromSingular(JsonSchema.Singular.Number)
+    JsonSchema(AnyOf(Singular.Number))
   def array(items: AnyOf, defs: Map[String, AnyOf]): JsonSchema =
-    JsonSchema.fromSingular(JsonSchema.Singular.Array(items), defs)
-
-  def fromSingular(
-      schema: JsonSchema.Singular,
-      defs: Map[String, AnyOf] = Map.empty
-  ): JsonSchema =
-    JsonSchema(AnyOf(List(schema)), defs)
+    JsonSchema(AnyOf(Singular.Array(items)), defs)
 
 object JsonSchemaCodec:
   val `true`: JsonSchemaCodec = Fix(Left(true))
@@ -212,12 +202,12 @@ object JsonSchemaCodec:
       JsonSchemaCodec.`object`(
         `type` = if removeType then None else Some(Left(SchemaType.Object)),
         properties = maybeProperties.map(properties =>
-          JsonObject(properties.view.mapValues(fromJsonSchema(_)).toMap)
+          JsonObject(properties.view.mapValues(fromAnyOf).toMap)
         ),
         required = maybeRequired.map(JsonArray(_)),
-        additionalProperties = maybeAdditionalProperties.map(fromJsonSchema(_)),
+        additionalProperties = maybeAdditionalProperties.map(fromAnyOf),
         `$defs` = maybeDefs.map(defs =>
-          JsonObject(defs.view.mapValues(fromJsonSchema(_)).toMap)
+          JsonObject(defs.view.mapValues(fromAnyOf).toMap)
         )
       )
     case JsonSchema.Singular.Boolean =>
@@ -233,7 +223,7 @@ object JsonSchemaCodec:
         ) =>
       JsonSchemaCodec.`object`(
         `type` = Some(Left(SchemaType.Array)),
-        items = Some(fromJsonSchema(items))
+        items = Some(fromAnyOf(items))
       )
     case JsonSchema.Singular.Const(value) =>
       JsonSchemaCodec.`object`(
@@ -248,15 +238,15 @@ object JsonSchemaCodec:
   def addToSetStrictly[A](s: Set[A], a: A) =
     if (s contains a) None else Some(s + a)
 
-  type MaybeEncode = Kleisli[Option, JsonSchema.AnyOf, JsonSchemaCodec]
+  val fromAnyOf: JsonSchema.AnyOf => JsonSchemaCodec = fromJsonSchemaWithDefs(
+    None
+  )
 
-  def fromJsonSchema(
-      schema: JsonSchema.AnyOf,
-      defs: Option[Map[String, JsonSchema.AnyOf]] = None
-  ): JsonSchemaCodec = {
+  def fromJsonSchemaWithDefs(
+      defs: Option[Map[String, JsonSchema.AnyOf]]
+  ): JsonSchema.AnyOf => JsonSchemaCodec = {
+    type MaybeEncode = Kleisli[Option, JsonSchema.AnyOf, JsonSchemaCodec]
     val single: MaybeEncode = Kleisli {
-      case JsonSchema.AnyOf(List(JsonSchema.Singular.True)) if defs.isEmpty =>
-        Some(JsonSchemaCodec.`true`)
       case JsonSchema.AnyOf(List(schema)) =>
         Some(fromSingular(removeType = false, defs)(schema))
       case _ => None
@@ -282,7 +272,7 @@ object JsonSchemaCodec:
         )
     }
 
-    val orElse: Reader[JsonSchema.AnyOf, JsonSchemaCodec] = Kleisli {
+    val usingAnyOf: Reader[JsonSchema.AnyOf, JsonSchemaCodec] = Kleisli {
       case JsonSchema.AnyOf(schemas) =>
         val maybeSingularType = schemas
           .foldM(none[SchemaType]) { case (maybePrevious, singular) =>
@@ -302,17 +292,16 @@ object JsonSchemaCodec:
           )
         )
     }
-    ((single <+> describedByTypeAlone <+> enumerable).toReader, orElse)
+    ((single <+> describedByTypeAlone <+> enumerable).toReader, usingAnyOf)
       .mapN(_ getOrElse _)
-      .run(schema)
+      .run
   }
 
   def of[A: SchemaOf]: JsonSchemaCodec =
     val JsonSchema(anyOf, defs) = summon[SchemaOf[A]].apply
-    JsonSchemaCodec.fromJsonSchema(
-      anyOf,
+    JsonSchemaCodec.fromJsonSchemaWithDefs(
       if defs.isEmpty then None else Some(defs)
-    )
+    )(anyOf)
 
   given encoder(using
       e: => Encoder[Unfixed[Fix[Unfixed]]]
@@ -337,11 +326,6 @@ object JsonSchemaCodec:
       )
     ]
   ]
-
-  def singular[A]: List[A] => Either[A, List[A]] = {
-    case List(x) => Left(x)
-    case xs      => Right(xs)
-  }
 
 trait SchemaOf[A]:
   def apply: JsonSchema
