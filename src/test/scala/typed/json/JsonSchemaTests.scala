@@ -499,5 +499,69 @@ object JsonSchemaTests extends TestSuite {
       """
       assert(schemaJson == expectedSchema)
     }
+    test("ref in array") {
+      type Name = Referenced["name", String]
+
+      val schemaJson =
+        JsonSchemaCodec
+          .of[JsonArray[Name]]
+          .asJson
+
+      val expectedSchema = json"""
+        {
+          "type": "array",
+          "items": {
+            "$$ref": "#/$$defs/name"
+          },
+          "$$defs": {
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      """
+      assert(schemaJson == expectedSchema)
+    }
+    test("ref in array or object") {
+      type Name = Referenced["name", String]
+
+      val schemaJson =
+        JsonSchemaCodec
+          .of[Either[JsonArray[Name], JsonObject[
+            (("first-name", Name), ("second-name", Name))
+          ]]]
+          .asJson
+
+      val expectedSchema = json"""
+        {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$$ref": "#/$$defs/name"
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "first-name": {
+                  "$$ref": "#/$$defs/name"
+                },
+                "second-name": {
+                  "$$ref": "#/$$defs/name"
+                }
+              },
+              "required": ["first-name", "second-name"]
+            }
+          ],
+          "$$defs": {
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      """
+      assert(schemaJson == expectedSchema)
+    }
   }
 }
