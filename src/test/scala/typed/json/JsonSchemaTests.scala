@@ -563,5 +563,56 @@ object JsonSchemaTests extends TestSuite {
       """
       assert(schemaJson == expectedSchema)
     }
+    test("standalone ref") {
+      val schemaJson =
+        JsonSchemaCodec.of[Referenced["name", String]].asJson
+      val expectedSchema = json"""
+      {
+        "$$ref": "#/$$defs/name",
+        "$$defs": {
+          "name": {
+            "type": "string"
+          }
+        }
+      }
+      """
+      assert(schemaJson == expectedSchema)
+
+    }
+    test("recursive ref") {
+      type Unfixed[A] = Either[String, JsonObject[(("left", A), ("right", A))]]
+      val schemaJson =
+        JsonSchemaCodec.of[Fix[[A] =>> Referenced["tree", Unfixed[A]]]].asJson
+      val expectedSchema = json"""
+        {
+          "$$ref": "#/$$defs/tree",
+          "$$defs": {
+            "tree": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "left": {
+                      "$$ref": "#/$$defs/tree"
+                    },
+                    "right": {
+                      "$$ref": "#/$$defs/tree"
+                    }
+                  },
+                  "required": [
+                    "left",
+                    "right"
+                  ]
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      """
+      assert(schemaJson == expectedSchema)
+    }
   }
 }
