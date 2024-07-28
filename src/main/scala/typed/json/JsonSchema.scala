@@ -4,7 +4,7 @@ import io.circe.Encoder
 import io.circe.syntax.*
 import io.circe
 import cats.syntax.all.*
-import cats.data.Writer
+import cats.data.{Writer, StateT}
 import cats.*
 
 enum SchemaType:
@@ -29,11 +29,12 @@ object SchemaType:
     }
 
   given SchemaOf[SchemaType] with
-    def apply: JsonSchema = JsonSchema(
-      JsonSchema.AnyOf(
-        SchemaType.values.toList.map(s => JsonSchema.Singular.Const(s.asJson))
-      )
-    )
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      JsonSchema
+        .AnyOf(
+          SchemaType.values.toList.map(s => JsonSchema.Singular.Const(s.asJson))
+        )
+        .pure[WithDefs]
 
   def fromSingular: JsonSchema.Singular => Option[SchemaType] = {
     case _: JsonSchema.Singular.String => Some(String)
@@ -46,12 +47,13 @@ object SchemaType:
     case _                             => None
   }
 
-case class JsonSchema(anyOf: JsonSchema.AnyOf, defs: Defs = Defs.empty) {
-  def writer: WithDefs[JsonSchema.AnyOf] = Writer(defs, anyOf)
-}
+case class JsonSchema(anyOf: JsonSchema.AnyOf, defs: Defs = Defs.empty)
 
 object JsonSchema:
-  def of[A: SchemaOf]: JsonSchema = summon[SchemaOf[A]].apply
+  def of[A: SchemaOf]: JsonSchema =
+    summon[SchemaOf[A]].apply.runA(Map.empty).run match {
+      case (defs, anyOf) => JsonSchema(anyOf = anyOf, defs = defs)
+    }
 
   def fromWriter: Writer[Defs, AnyOf] => JsonSchema = _.run match {
     case (defs, anyOf) => JsonSchema(anyOf, defs)
@@ -104,104 +106,93 @@ object JsonSchema:
     JsonSchema(JsonSchema.AnyOf(singular))
 
 trait SchemaOf[A]:
-  def apply: JsonSchema
+  def apply: WithDefs[JsonSchema.AnyOf]
 
 object SchemaOf:
   given objMap[A: SchemaOf]: SchemaOf[JsonObject[Map[String, A]]] with
-    def apply: JsonSchema = JsonSchema.of[A] match {
-      case JsonSchema(anyOf, defs) =>
-        JsonSchema(
-          JsonSchema.AnyOf(
-            JsonSchema.Singular.Object(
-              additionalProperties = Some(anyOf)
-            )
-          ),
-          defs
+    def apply: WithDefs[JsonSchema.AnyOf] = summon[SchemaOf[A]].apply.map {
+      anyOf =>
+        JsonSchema.AnyOf(
+          JsonSchema.Singular.Object(
+            additionalProperties = Some(anyOf)
+          )
         )
-
     }
 
   given SchemaOf[String] with
-    def apply: JsonSchema =
-      JsonSchema.singular(JsonSchema.Singular.String())
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      JsonSchema.AnyOf(JsonSchema.Singular.String()).pure[WithDefs]
 
   given SchemaOf[Int] with
-    def apply: JsonSchema =
-      JsonSchema.singular(JsonSchema.Singular.Integer)
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      JsonSchema.AnyOf(JsonSchema.Singular.Integer).pure[WithDefs]
 
   given SchemaOf[Boolean] with
-    def apply: JsonSchema =
-      JsonSchema.singular(JsonSchema.Singular.Boolean)
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      JsonSchema.AnyOf(JsonSchema.Singular.Boolean).pure[WithDefs]
 
   given SchemaOf[JsonNull] with
-    def apply: JsonSchema =
-      JsonSchema.singular(JsonSchema.Singular.Null)
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      JsonSchema.AnyOf(JsonSchema.Singular.Null).pure[WithDefs]
 
   given SchemaOf[circe.JsonObject] with
-    def apply: JsonSchema = JsonSchema.singular(JsonSchema.Singular.Object())
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      JsonSchema.AnyOf(JsonSchema.Singular.Object()).pure[WithDefs]
 
   given SchemaOf[circe.Json] with
-    def apply: JsonSchema = JsonSchema.`true`
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      JsonSchema.AnyOf(JsonSchema.Singular.True).pure[WithDefs]
 
   given SchemaOf[Double] with
-    def apply: JsonSchema =
-      JsonSchema.singular(JsonSchema.Singular.Number)
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      JsonSchema.AnyOf(JsonSchema.Singular.Number).pure[WithDefs]
 
   given SchemaOf[Email] with
-    def apply: JsonSchema =
-      JsonSchema.singular(JsonSchema.Singular.String(format = Some("email")))
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      JsonSchema
+        .AnyOf(JsonSchema.Singular.String(format = Some("email")))
+        .pure[WithDefs]
 
   given [A: SchemaOf]: SchemaOf[JsonArray[A]] with
-    def apply: JsonSchema = JsonSchema.of[A] match {
-      case JsonSchema(anyOf, defs) =>
-        JsonSchema(JsonSchema.AnyOf(JsonSchema.Singular.Array(anyOf)), defs)
+    def apply: WithDefs[JsonSchema.AnyOf] = summon[SchemaOf[A]].apply.map {
+      anyOf =>
+        JsonSchema.AnyOf(JsonSchema.Singular.Array(anyOf))
     }
+
+  given fixSchema[F[_]](using e: => SchemaOf[F[Fix[F]]]): SchemaOf[Fix[F]] with
+    def apply: WithDefs[JsonSchema.AnyOf] = e.apply
 
   given objWithProperties[A: PropertiesOf: RequiredOf]: SchemaOf[JsonObject[A]]
   with
-    def apply: JsonSchema = Properties.of[A] match {
-      case Properties(properties, defs) =>
-        JsonSchema(
-          anyOf = JsonSchema.AnyOf(
-            JsonSchema.Singular.Object(
-              properties = Some(properties),
-              required = Some(summon[RequiredOf[A]].apply)
-            )
-          ),
-          defs = defs
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      summon[PropertiesOf[A]].apply.map { case Properties(properties) =>
+        JsonSchema.AnyOf(
+          JsonSchema.Singular.Object(
+            properties = Some(properties),
+            required = Some(summon[RequiredOf[A]].apply)
+          )
         )
-    }
+      }
 
   given [A: SchemaOf, B: SchemaOf]: SchemaOf[Either[A, B]] with
-    def apply: JsonSchema =
-      JsonSchema.fromWriter {
-        (
-          JsonSchema.of[A].writer,
-          JsonSchema.of[B].writer
-        ).mapN { case (JsonSchema.AnyOf(x), JsonSchema.AnyOf(y)) =>
-          JsonSchema.AnyOf(x ++ y)
-        }
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      (
+        summon[SchemaOf[A]].apply,
+        summon[SchemaOf[B]].apply,
+      ).mapN { case (JsonSchema.AnyOf(x), JsonSchema.AnyOf(y)) =>
+        JsonSchema.AnyOf(x ++ y)
       }
 
   given [A: ValueOf: Encoder]: SchemaOf[A] with
-    def apply: JsonSchema =
-      JsonSchema.singular(
-        JsonSchema.Singular.Const(summon[ValueOf[A]].value.asJson)
-      )
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      JsonSchema
+        .AnyOf(JsonSchema.Singular.Const(summon[ValueOf[A]].value.asJson))
+        .pure[WithDefs]
 
 trait PropertiesOf[A]:
-  def apply: Properties
+  def apply: WithDefs[Properties]
 
-case class Properties(value: Map[String, JsonSchema.AnyOf], defs: Defs) {
-  def writer: WithDefs[Map[String, JsonSchema.AnyOf]] = Writer(defs, value)
-}
-object Properties:
-  def of[A: PropertiesOf]: Properties = summon[PropertiesOf[A]].apply
-  def fromWriter: WithDefs[Map[String, JsonSchema.AnyOf]] => Properties =
-    _.run match {
-      case (defs, props) => Properties(props, defs)
-    }
-
+case class Properties(value: Map[String, JsonSchema.AnyOf])
 case class Defs(value: Map[String, JsonSchema.AnyOf])
 
 object Defs:
@@ -210,29 +201,25 @@ object Defs:
     def combine(x: Defs, y: Defs): Defs = Defs(x.value ++ y.value)
     def empty: Defs = Defs(Map.empty)
 
-type WithDefs[A] = Writer[Defs, A]
-
-object WithDefs:
-  def pure[A](a: A): WithDefs[A] = Writer.value(a)
+type DefsWriter[A] = Writer[Defs, A]
+type WithDefs[A] = StateT[DefsWriter, Map[String, JsonSchema.AnyOf], A]
 
 object PropertiesOf:
   given opt[A: JsonFieldCodec, B: SchemaOf, C <: Tuple: PropertiesOf]
       : PropertiesOf[Option[(A, B)] *: C] with
-    def apply: Properties = nonOpt[A, B, C].apply
+    def apply: WithDefs[Properties] = nonOpt[A, B, C].apply
 
   given PropertiesOf[EmptyTuple] with
-    def apply: Properties = Properties(Map.empty, Defs(Map.empty))
+    def apply: WithDefs[Properties] = Properties(Map.empty).pure[WithDefs]
 
   given nonOpt[A: JsonFieldCodec, B: SchemaOf, C <: Tuple: PropertiesOf]
       : PropertiesOf[(A, B) *: C] with
-    def apply: Properties =
-      Properties.fromWriter {
-        (
-          Properties.of[C].writer,
-          JsonSchema.of[B].writer
-        ).mapN { case (properties, anyOf) =>
-          properties + (summon[JsonFieldCodec[A]].encode -> anyOf)
-        }
+    def apply: WithDefs[Properties] =
+      (
+        summon[PropertiesOf[C]].apply,
+        summon[SchemaOf[B]].apply
+      ).mapN { case (Properties(properties), anyOf) =>
+        Properties(properties + (summon[JsonFieldCodec[A]].encode -> anyOf))
       }
 
 trait RequiredOf[A]:
@@ -251,16 +238,30 @@ object RequiredOf:
 case class Referenced[A, B](value: B)
 
 object Referenced:
+  def cached[F[_]: Monad, A, B](
+      f: A => StateT[F, Map[A, B], B]
+  ): A => StateT[F, Map[A, B], B] = a =>
+    for {
+      maybeB <- StateT.inspect[F, Map[A, B], Option[B]](_.get(a))
+      b <- maybeB match {
+        case Some(b) => StateT.pure[F, Map[A, B], B](b)
+        case None    => f(a).flatTap(b => StateT.modify(_ + (a -> b)))
+      }
+    } yield b
   given [A <: String: ValueOf, B: SchemaOf]: SchemaOf[Referenced[A, B]] with
-    def apply: JsonSchema = JsonSchema.fromWriter {
-      for {
-        thisDef <- summon[SchemaOf[B]].apply.writer
-        key = summon[ValueOf[A]].value
-        _ <- Writer.tell(Defs(Map(key -> thisDef)))
-      } yield JsonSchema.AnyOf(
-        JsonSchema.Singular.Ref(
-          JsonSchema.Reference.Root(List("$defs", key))
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      cached[DefsWriter, String, JsonSchema.AnyOf] { key =>
+        cached[DefsWriter, String, JsonSchema.AnyOf] { key =>
+          JsonSchema
+            .AnyOf(
+              JsonSchema.Singular.Ref(
+                JsonSchema.Reference.Root(List("$defs", key))
+              )
+            )
+            .pure[WithDefs]
+        }.apply(key) <* summon[SchemaOf[B]].apply.flatTap(thisDef =>
+          StateT.liftF[DefsWriter, Map[String, JsonSchema.AnyOf], Unit](
+            Writer.tell(Defs(Map(key -> thisDef)))
+          )
         )
-      )
-
-    }
+      }.apply(summon[ValueOf[A]].value)

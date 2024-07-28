@@ -47,13 +47,13 @@ object JsonSchemaTests extends TestSuite {
     test("custom format string") {
       case class MyStringFormat(value: String)
       given SchemaOf[MyStringFormat] with
-        def apply: JsonSchema =
-          JsonSchema(
-            JsonSchema.AnyOf(
+        def apply: WithDefs[JsonSchema.AnyOf] =
+          JsonSchema
+            .AnyOf(
               JsonSchema.Singular
                 .String(minLength = Some(5), maxLength = Some(10))
             )
-          )
+            .pure[WithDefs]
       testFixed[MyStringFormat](json"""{
         "type": "string",
         "minLength": 5,
@@ -366,10 +366,10 @@ object JsonSchemaTests extends TestSuite {
     test("email or minLength") {
       type MyStringFormat
       given SchemaOf[MyStringFormat] with
-        def apply: JsonSchema =
-          JsonSchema(
-            JsonSchema.AnyOf(JsonSchema.Singular.String(minLength = Some(5)))
-          )
+        def apply: WithDefs[JsonSchema.AnyOf] =
+          JsonSchema
+            .AnyOf(JsonSchema.Singular.String(minLength = Some(5)))
+            .pure[WithDefs]
       val schemaJson = JsonSchemaCodec.of[Either[MyStringFormat, Email]].asJson
       val expectedSchema = (anyOf: Json) => parse(s"""{
         "type": "string",
@@ -583,36 +583,49 @@ object JsonSchemaTests extends TestSuite {
       type Unfixed[A] = Either[String, JsonObject[(("left", A), ("right", A))]]
       val schemaJson =
         JsonSchemaCodec.of[Fix[[A] =>> Referenced["tree", Unfixed[A]]]].asJson
-      val expectedSchema = json"""
+      val expectedFirstSchema: Json = json"""
+        {
+          "type": "string"
+        }
+      """
+      val expectedSecondSchema: Json = json"""
+        {
+          "type": "object",
+          "properties": {
+            "left": {
+              "$$ref": "#/$$defs/tree"
+            },
+            "right": {
+              "$$ref": "#/$$defs/tree"
+            }
+          },
+          "required": [
+            "left",
+            "right"
+          ]
+        }
+      """
+      val maybeAnyOf =
+        Decoder[Json].at("anyOf").at("tree").at("$defs").decodeJson
+
+      val expectedSchema = (anyOf: Json) => parse(s"""
         {
           "$$ref": "#/$$defs/tree",
           "$$defs": {
             "tree": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "left": {
-                      "$$ref": "#/$$defs/tree"
-                    },
-                    "right": {
-                      "$$ref": "#/$$defs/tree"
-                    }
-                  },
-                  "required": [
-                    "left",
-                    "right"
-                  ]
-                },
-                {
-                  "type": "string"
-                }
-              ]
+              "anyOf": $anyOf
             }
           }
         }
-      """
-      assert(schemaJson == expectedSchema)
+      """)
+      assert(
+        maybeAnyOf(schemaJson).flatMap(_.as[StrictSet[Json]]) == Right(
+          StrictSet(Set(expectedFirstSchema, expectedSecondSchema))
+        )
+      )
+      assert(
+        Right(schemaJson) == maybeAnyOf(schemaJson).flatMap(expectedSchema)
+      )
     }
   }
 }
