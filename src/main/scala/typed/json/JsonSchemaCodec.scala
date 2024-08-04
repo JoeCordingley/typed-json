@@ -219,7 +219,7 @@ object JsonSchemaCodec:
   }
 
   def of[A: SchemaOf]: JsonSchemaCodec =
-    val (Defs(defs), anyOf) = summon[SchemaOf[A]].apply.runA(Map.empty).run
+    val (Defs(defs), anyOf) = summon[SchemaOf[A]].apply.run
     JsonSchemaCodec.fromJsonSchemaWithDefs(
       if defs.isEmpty then None else Some(createDefs(defs))
     )(anyOf)

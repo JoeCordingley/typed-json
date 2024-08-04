@@ -12,6 +12,11 @@ object Fix:
     e.contramap(_.unfix)
   given [F[_]](using d: => Decoder[F[Fix[F]]]): Decoder[Fix[F]] = d.map(Fix(_))
 
+//case class RecursiveRef[F[_], A](unfix: F[RecursiveRef[F, A]])
+//  given [F[_], A](using e: => Encoder[F[RecursiveRef[F, A]]]): Encoder[Fix[F]] =
+//    e.contramap(_.unfix)
+//  given [F[_], A](using d: => Decoder[F[Fix[F]]]): Decoder[Fix[F]] = d.map(Fix(_))
+
 case object JsonNull:
   given Encoder[JsonNull] = _ => Json.Null
   given Decoder[JsonNull] = Decoder[Json].emap {

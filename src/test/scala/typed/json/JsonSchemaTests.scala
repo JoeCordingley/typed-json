@@ -574,7 +574,7 @@ object JsonSchemaTests extends TestSuite {
     test("recursive ref") {
       type Unfixed[A] = Either[String, JsonObject[(("left", A), ("right", A))]]
       val schemaJson =
-        JsonSchemaCodec.of[Fix[[A] =>> Referenced["tree", Unfixed[A]]]].asJson
+        JsonSchemaCodec.of[RecursiveRef["tree", Unfixed]].asJson
       val expectedFirstSchema: Json = json"""
         {
           "type": "string"

@@ -47,11 +47,12 @@ object SchemaType:
     case _                             => None
   }
 
+case class RecursiveRef[A, F[_]](fixed: Fix[F])
 case class JsonSchema(anyOf: JsonSchema.AnyOf, defs: Defs = Defs.empty)
 
 object JsonSchema:
   def of[A: SchemaOf]: JsonSchema =
-    summon[SchemaOf[A]].apply.runA(Map.empty).run match {
+    summon[SchemaOf[A]].apply.run match {
       case (defs, anyOf) => JsonSchema(anyOf = anyOf, defs = defs)
     }
 
@@ -129,9 +130,10 @@ trait SchemaOf[A]:
   def apply: WithDefs[JsonSchema.AnyOf]
 
 object SchemaOf:
+  type RootDefsReference[A]
   def instance[A](schema: JsonSchema): SchemaOf[A] = new SchemaOf[A] {
     def apply: WithDefs[JsonSchema.AnyOf] =
-      StateT.liftF(Writer.apply(schema.defs, schema.anyOf))
+      Writer.apply(schema.defs, schema.anyOf)
   }
 
   given objMap[A: SchemaOf]: SchemaOf[JsonObject[Map[String, A]]] with
@@ -187,6 +189,21 @@ object SchemaOf:
   given fixSchema[F[_]](using e: => SchemaOf[F[Fix[F]]]): SchemaOf[Fix[F]] with
     def apply: WithDefs[JsonSchema.AnyOf] = e.apply
 
+  given [F[_], A <: String: ValueOf](using
+      SchemaOf[F[RootDefsReference[A]]]
+  ): SchemaOf[RecursiveRef[A, F]] with
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      summon[SchemaOf[Referenced[A, F[RootDefsReference[A]]]]].apply
+
+  given [A <: String: ValueOf]: SchemaOf[RootDefsReference[A]] with
+    def apply: WithDefs[JsonSchema.AnyOf] = JsonSchema
+      .AnyOf(
+        JsonSchema.Singular.Ref(
+          JsonSchema.Reference.Root(List("$defs", summon[ValueOf[A]].value))
+        )
+      )
+      .pure[WithDefs]
+
   given objWithProperties[A: PropertiesOf: RequiredOf]: SchemaOf[JsonObject[A]]
   with
     def apply: WithDefs[JsonSchema.AnyOf] =
@@ -226,8 +243,7 @@ object Defs:
     def combine(x: Defs, y: Defs): Defs = Defs(x.value ++ y.value)
     def empty: Defs = Defs(Map.empty)
 
-type DefsWriter[A] = Writer[Defs, A]
-type WithDefs[A] = StateT[DefsWriter, Map[String, JsonSchema.AnyOf], A]
+type WithDefs[A] = Writer[Defs, A]
 
 object PropertiesOf:
   given opt[A: JsonFieldCodec, B: SchemaOf, C <: Tuple: PropertiesOf]
@@ -263,30 +279,20 @@ object RequiredOf:
 case class Referenced[A, B](value: B)
 
 object Referenced:
-  def cached[F[_]: Monad, A, B](
-      f: A => StateT[F, Map[A, B], B]
-  ): A => StateT[F, Map[A, B], B] = a =>
-    for {
-      maybeB <- StateT.inspect[F, Map[A, B], Option[B]](_.get(a))
-      b <- maybeB match {
-        case Some(b) => StateT.pure[F, Map[A, B], B](b)
-        case None    => f(a).flatTap(b => StateT.modify(_ + (a -> b)))
-      }
-    } yield b
   given [A <: String: ValueOf, B: SchemaOf]: SchemaOf[Referenced[A, B]] with
-    def apply: WithDefs[JsonSchema.AnyOf] =
-      cached[DefsWriter, String, JsonSchema.AnyOf] { key =>
-        cached[DefsWriter, String, JsonSchema.AnyOf] { key =>
-          JsonSchema
-            .AnyOf(
-              JsonSchema.Singular.Ref(
-                JsonSchema.Reference.Root(List("$defs", key))
-              )
-            )
-            .pure[WithDefs]
-        }.apply(key) <* summon[SchemaOf[B]].apply.flatTap(thisDef =>
-          StateT.liftF[DefsWriter, Map[String, JsonSchema.AnyOf], Unit](
-            Writer.tell(Defs(Map(key -> thisDef)))
+    def apply: WithDefs[JsonSchema.AnyOf] = for {
+      thisDef <- summon[SchemaOf[B]].apply
+      key = summon[ValueOf[A]].value
+      thisValue <- Writer(
+        Defs(
+          Map(
+            key -> thisDef
+          )
+        ),
+        JsonSchema.AnyOf(
+          JsonSchema.Singular.Ref(
+            JsonSchema.Reference.Root(List("$defs", key))
           )
         )
-      }.apply(summon[ValueOf[A]].value)
+      )
+    } yield thisValue

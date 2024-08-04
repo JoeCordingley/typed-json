@@ -38,3 +38,6 @@
         - [ ] minItems
         - [ ] maxItems
         - [ ] uniqueItems
+- [ ] join Fix and Reference
+- [ ] use existing fix maybe
+- [ ] json encoder tests for all schema tests
