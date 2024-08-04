@@ -186,9 +186,6 @@ object SchemaOf:
         JsonSchema.AnyOf(JsonSchema.Singular.Array(anyOf))
     }
 
-  given fixSchema[F[_]](using e: => SchemaOf[F[Fix[F]]]): SchemaOf[Fix[F]] with
-    def apply: WithDefs[JsonSchema.AnyOf] = e.apply
-
   given [F[_], A <: String: ValueOf](using
       SchemaOf[F[RootDefsReference[A]]]
   ): SchemaOf[RecursiveRef[A, F]] with
