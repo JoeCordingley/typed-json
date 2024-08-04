@@ -46,14 +46,9 @@ object JsonSchemaTests extends TestSuite {
     }
     test("custom format string") {
       case class MyStringFormat(value: String)
-      given SchemaOf[MyStringFormat] with
-        def apply: WithDefs[JsonSchema.AnyOf] =
-          JsonSchema
-            .AnyOf(
-              JsonSchema.Singular
-                .String(minLength = Some(5), maxLength = Some(10))
-            )
-            .pure[WithDefs]
+      given SchemaOf[MyStringFormat] = SchemaOf.instance(
+        JsonSchema.string(minLength = Some(5), maxLength = Some(10))
+      )
       testFixed[MyStringFormat](json"""{
         "type": "string",
         "minLength": 5,
@@ -365,11 +360,8 @@ object JsonSchemaTests extends TestSuite {
     }
     test("email or minLength") {
       type MyStringFormat
-      given SchemaOf[MyStringFormat] with
-        def apply: WithDefs[JsonSchema.AnyOf] =
-          JsonSchema
-            .AnyOf(JsonSchema.Singular.String(minLength = Some(5)))
-            .pure[WithDefs]
+      given SchemaOf[MyStringFormat] =
+        SchemaOf.instance(JsonSchema.string(minLength = Some(5)))
       val schemaJson = JsonSchemaCodec.of[Either[MyStringFormat, Email]].asJson
       val expectedSchema = (anyOf: Json) => parse(s"""{
         "type": "string",

@@ -1,0 +1,40 @@
+- [ ] confusion with JsonSchema and AnyOf WithDefs etc
+- [ ] README with examples
+- [ ] scaladocs
+- [ ] automated release
+- [ ] tuple validation in lists (prefixItems) don't forget to set items to false
+- [ ] use refinement with iron
+- [ ] try removing propertiesOf and requiredOf for simplicity
+- [ ] further refinements
+    - [ ] string
+        - [ ] pattern
+        - [ ] built in formats
+            - [ ] date-time
+            - [ ] time
+            - [ ] date
+            - [ ] duration
+            - [x] email
+            - [ ] idn-email
+            - [ ] hostname
+            - [ ] idn-hostname
+            - [ ] ipv4
+            - [ ] ipv6
+            - [ ] uuid
+            - [ ] uri
+            - [ ] uri-reference
+            - [ ] iri
+            - [ ] iri-reference
+            - [ ] uri-template
+            - [ ] json-pointer
+            - [ ] relative-json-pointer
+            - [ ] regex
+    - [ ] number
+        - [ ] multipleOf
+        - [ ] minimum
+        - [ ] exclusiveMinimum
+        - [ ] maximum
+        - [ ] exclusiveMaximum
+    - [ ] array
+        - [ ] minItems
+        - [ ] maxItems
+        - [ ] uniqueItems

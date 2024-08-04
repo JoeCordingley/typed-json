@@ -55,9 +55,35 @@ object JsonSchema:
       case (defs, anyOf) => JsonSchema(anyOf = anyOf, defs = defs)
     }
 
-  def fromWriter: Writer[Defs, AnyOf] => JsonSchema = _.run match {
-    case (defs, anyOf) => JsonSchema(anyOf, defs)
-  }
+  def string(
+      format: Option[String] = None,
+      minLength: Option[Int] = None,
+      maxLength: Option[Int] = None
+  ): JsonSchema = singular(Singular.String(format, minLength, maxLength))
+  val `null`: JsonSchema = singular(Singular.Null)
+  val integer: JsonSchema = singular(Singular.Integer)
+  def `object`(
+      properties: Option[Map[String, AnyOf]] = None,
+      required: Option[List[String]] = None,
+      additionalProperties: Option[AnyOf] = None
+  ): JsonSchema = singular(
+    Singular.Object(properties, required, additionalProperties)
+  )
+
+  val boolean: JsonSchema = singular(Singular.Boolean)
+  val number: JsonSchema = singular(Singular.Number)
+  def array(items: AnyOf): JsonSchema = singular(Singular.Array(items))
+
+  val `true`: JsonSchema =
+    singular(Singular.True)
+  def const(value: circe.Json): JsonSchema = singular(Singular.Const(value))
+  def `enum`(values: List[circe.Json]): JsonSchema = JsonSchema(
+    AnyOf(values.map(Singular.Const(_)))
+  )
+
+  def singular(singular: Singular): JsonSchema =
+    JsonSchema(JsonSchema.AnyOf(singular))
+
   case class AnyOf(schemas: List[JsonSchema.Singular])
 
   object AnyOf:
@@ -99,16 +125,15 @@ object JsonSchema:
     def describedByTypeAlone(singular: Singular): Option[SchemaType] =
       if isSimple(singular) then SchemaType.fromSingular(singular) else None
 
-  val `true`: JsonSchema =
-    singular(Singular.True)
-
-  def singular(singular: Singular): JsonSchema =
-    JsonSchema(JsonSchema.AnyOf(singular))
-
 trait SchemaOf[A]:
   def apply: WithDefs[JsonSchema.AnyOf]
 
 object SchemaOf:
+  def instance[A](schema: JsonSchema): SchemaOf[A] = new SchemaOf[A] {
+    def apply: WithDefs[JsonSchema.AnyOf] =
+      StateT.liftF(Writer.apply(schema.defs, schema.anyOf))
+  }
+
   given objMap[A: SchemaOf]: SchemaOf[JsonObject[Map[String, A]]] with
     def apply: WithDefs[JsonSchema.AnyOf] = summon[SchemaOf[A]].apply.map {
       anyOf =>
