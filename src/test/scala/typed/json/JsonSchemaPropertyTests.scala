@@ -24,7 +24,7 @@ object JsonSchemaPropertyTests extends Properties("JsonSchema") {
 
   object JsonType:
     case object StringType extends JsonType[String]
-    case class ArrayType[A](t: JsonType[A]) extends JsonType[JsonArray[A]]
+    case class ArrayType[A](t: JsonType[A]) extends JsonType[JsonArray[List[A]]]
 
   sealed trait JsonType[A] extends UntypedJson {
     type T = A

@@ -21,7 +21,7 @@ case object JsonNull:
 
 type JsonNull = JsonNull.type
 
-case class JsonArray[A](elements: List[A])
+case class JsonArray[A](elements: A)
 
 case class JsonMember[A](value: A)
 object JsonMember:
@@ -37,9 +37,10 @@ object JsonMember:
     .map(JsonMember(_))
 
 object JsonArray {
-  given [A: Encoder]: Encoder[JsonArray[A]] =
+  given [A: Encoder]: Encoder[JsonArray[List[A]]] =
     Encoder[List[A]].contramap(_.elements)
-  given [A: Decoder]: Decoder[JsonArray[A]] = Decoder[List[A]].map(JsonArray(_))
+  given [A: Decoder]: Decoder[JsonArray[List[A]]] =
+    Decoder[List[A]].map(JsonArray(_))
 }
 
 trait JsonFieldCodec[A]:

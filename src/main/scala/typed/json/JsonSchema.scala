@@ -1,6 +1,6 @@
 package typed.json
 
-import io.circe.Encoder
+import io.circe.{Encoder, Decoder}
 import io.circe.syntax.*
 import io.circe
 import cats.syntax.all.*
@@ -186,7 +186,7 @@ object SchemaOf:
       JsonSchema(JsonSchema.Singular.String(format = Some("email")))
         .pure[DefsWriter]
 
-  given [A: SchemaOf]: SchemaOf[JsonArray[A]] with
+  given [A: SchemaOf]: SchemaOf[JsonArray[List[A]]] with
     def apply: DefsWriter[JsonSchema] =
       summon[SchemaOf[A]].apply.map { anyOf =>
         JsonSchema(JsonSchema.Singular.Array(anyOf))
@@ -282,6 +282,10 @@ object RequiredOf:
 case class Referenced[A, B](value: B)
 
 object Referenced:
+  given [A, B: Encoder]: Encoder[Referenced[A, B]] =
+    Encoder[B].contramap(_.value)
+  given [A, B: Decoder]: Decoder[Referenced[A, B]] =
+    Decoder[B].map(Referenced(_))
   given [A <: String: ValueOf, B: SchemaOf]: SchemaOf[Referenced[A, B]] with
     def apply: DefsWriter[JsonSchema] = for {
       thisDef <- summon[SchemaOf[B]].apply

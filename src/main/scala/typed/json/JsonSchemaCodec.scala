@@ -14,17 +14,17 @@ object JsonSchemaCodec:
     Boolean,
     JsonObject[
       (
-          Option[("type", Either[SchemaType, JsonArray[SchemaType]])],
+          Option[("type", Either[SchemaType, JsonArray[List[SchemaType]]])],
           Option[("properties", JsonObject[Map[String, A]])],
-          Option[("required", JsonArray[String])],
+          Option[("required", JsonArray[List[String]])],
           Option[("items", A)],
           Option[("additionalProperties", A)],
           Option[("format", String)],
           Option[("minLength", Int)],
           Option[("maxLength", Int)],
-          Option[("anyOf", JsonArray[A])],
+          Option[("anyOf", JsonArray[List[A]])],
           Option[("const", circe.Json)],
-          Option[("enum", JsonArray[circe.Json])],
+          Option[("enum", JsonArray[List[circe.Json]])],
           Option[("$defs", JsonObject[Map[String, A]])],
           Option[("$ref", String)],
       )
@@ -33,17 +33,17 @@ object JsonSchemaCodec:
   val `true`: JsonSchemaCodec = Fix(Left(true))
   def `object`(
       `$defs`: Option[CodecMap],
-      `type`: Option[Either[SchemaType, JsonArray[SchemaType]]] = None,
+      `type`: Option[Either[SchemaType, JsonArray[List[SchemaType]]]] = None,
       properties: Option[CodecMap] = None,
-      required: Option[JsonArray[String]] = None,
+      required: Option[JsonArray[List[String]]] = None,
       items: Option[JsonSchemaCodec] = None,
       additionalProperties: Option[JsonSchemaCodec] = None,
       format: Option[String] = None,
       minLength: Option[Int] = None,
       maxLength: Option[Int] = None,
-      anyOf: Option[JsonArray[JsonSchemaCodec]] = None,
+      anyOf: Option[JsonArray[List[JsonSchemaCodec]]] = None,
       const: Option[circe.Json] = None,
-      `enum`: Option[JsonArray[circe.Json]] = None,
+      `enum`: Option[JsonArray[List[circe.Json]]] = None,
       `$ref`: Option[String] = None
   ): JsonSchemaCodec = Fix(
     Right(

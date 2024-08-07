@@ -383,10 +383,10 @@ object JsonSchemaTests extends TestSuite {
       )
     }
     test("array of json") {
-      testSimple[JsonArray[circe.Json]]("array")
+      testSimple[JsonArray[List[circe.Json]]]("array")
     }
     test("array of string") {
-      testFixed[JsonArray[String]](json"""{
+      testFixed[JsonArray[List[String]]](json"""{
         "type": "array",
         "items": {
           "type": "string"
@@ -496,7 +496,7 @@ object JsonSchemaTests extends TestSuite {
 
       val schemaJson =
         JsonSchemaCodec
-          .of[JsonArray[Name]]
+          .of[JsonArray[List[Name]]]
           .asJson
 
       val expectedSchema = json"""
@@ -519,7 +519,7 @@ object JsonSchemaTests extends TestSuite {
 
       val schemaJson =
         JsonSchemaCodec
-          .of[Either[JsonArray[Name], JsonObject[
+          .of[Either[JsonArray[List[Name]], JsonObject[
             (("first-name", Name), ("second-name", Name))
           ]]]
           .asJson
