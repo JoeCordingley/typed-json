@@ -1,10 +1,10 @@
-- [ ] confusion with JsonSchema and AnyOf WithDefs etc
+- [x] confusion with JsonSchema and AnyOf WithDefs etc
+- [ ] json encoder tests for all schema tests
 - [ ] README with examples
 - [ ] scaladocs
 - [ ] automated release
 - [ ] tuple validation in lists (prefixItems) don't forget to set items to false
-- [ ] use refinement with iron
-- [ ] try removing propertiesOf and requiredOf for simplicity
+- [x] try removing propertiesOf and requiredOf for simplicity -- don't think it is possible
 - [ ] further refinements
     - [ ] string
         - [ ] pattern
@@ -40,4 +40,5 @@
         - [ ] uniqueItems
 - [ ] join Fix and Reference
 - [ ] use existing fix maybe
-- [ ] json encoder tests for all schema tests
+- [ ] use refinement with iron
+- [ ] expand to openApi
