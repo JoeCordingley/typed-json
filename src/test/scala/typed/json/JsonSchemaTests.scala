@@ -35,6 +35,7 @@ object JsonSchemaTests extends TestSuite {
   def testSimple[A: SchemaOf](typeName: String) = testFixed[A](parse(s"""{
           "type": "$typeName"
         }""").toOption.get)
+
   val tests = Tests {
     test("json") { testFixed[circe.Json](json"true") }
     test("string") { testSimple[String]("string") }
@@ -448,7 +449,7 @@ object JsonSchemaTests extends TestSuite {
       """
       assert(schemaJson == expectedSchema)
     }
-    test("nested refs") {
+    test("nested-refs") {
       type Inner = Referenced["inner", String]
       type Middle =
         Referenced["middle", JsonObject[(("a", Inner), ("b", Inner))]]
@@ -618,6 +619,22 @@ object JsonSchemaTests extends TestSuite {
       assert(
         Right(schemaJson) == maybeAnyOf(schemaJson).flatMap(expectedSchema)
       )
+    }
+    test("tuple-arrays") {
+      testFixed[JsonArray[(String, Int)]](json"""
+        {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "int"
+            }
+          ],
+          "items": false
+        }
+      """)
     }
   }
 }

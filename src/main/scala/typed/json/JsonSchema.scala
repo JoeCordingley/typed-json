@@ -35,14 +35,14 @@ object SchemaType:
       ).pure[DefsWriter]
 
   def fromSingular: JsonSchema.Singular => Option[SchemaType] = {
-    case _: JsonSchema.Singular.String => Some(String)
-    case _: JsonSchema.Singular.Object => Some(Object)
-    case JsonSchema.Singular.Integer   => Some(Integer)
-    case JsonSchema.Singular.Boolean   => Some(Boolean)
-    case JsonSchema.Singular.Null      => Some(Null)
-    case _: JsonSchema.Singular.Array  => Some(Array)
-    case JsonSchema.Singular.Number    => Some(Number)
-    case _                             => None
+    case _: JsonSchema.Singular.String    => Some(String)
+    case _: JsonSchema.Singular.Object    => Some(Object)
+    case JsonSchema.Singular.Integer      => Some(Integer)
+    case JsonSchema.Singular.Boolean      => Some(Boolean)
+    case JsonSchema.Singular.Null         => Some(Null)
+    case _: JsonSchema.Singular.ListArray => Some(Array)
+    case JsonSchema.Singular.Number       => Some(Number)
+    case _                                => None
   }
 
 case class RecursiveRef[A, F[_]](fixed: Fix[F])
@@ -72,7 +72,7 @@ object JsonSchema:
   val boolean: JsonSchema = singular(Singular.Boolean)
   val number: JsonSchema = singular(Singular.Number)
   def array(items: JsonSchema): JsonSchema = singular(
-    Singular.Array(items)
+    Singular.ListArray(items)
   )
 
   val `true`: JsonSchema =
@@ -101,7 +101,8 @@ object JsonSchema:
     )
     case Boolean
     case Number
-    case Array(items: JsonSchema)
+    case ListArray(items: JsonSchema)
+    case TupleArray(prefixItems: List[JsonSchema])
     case True
     case Const(value: circe.Json)
     case Ref(identifier: Reference)
@@ -115,7 +116,7 @@ object JsonSchema:
         format.isEmpty && minLength.isEmpty && maxLength.isEmpty
       case Object(properties, required, additionalProperties) =>
         properties.isEmpty && required.isEmpty && additionalProperties.isEmpty
-      case Array(JsonSchema(schemas)) =>
+      case ListArray(JsonSchema(schemas)) =>
         schemas == List(JsonSchema.Singular.True)
       case _ => true
     }
@@ -189,7 +190,7 @@ object SchemaOf:
   given [A: SchemaOf]: SchemaOf[JsonArray[List[A]]] with
     def apply: DefsWriter[JsonSchema] =
       summon[SchemaOf[A]].apply.map { anyOf =>
-        JsonSchema(JsonSchema.Singular.Array(anyOf))
+        JsonSchema(JsonSchema.Singular.ListArray(anyOf))
       }
 
   given [F[_], A <: String: ValueOf](using
@@ -205,6 +206,12 @@ object SchemaOf:
           .Root(List("$defs", summon[ValueOf[A]].value))
       )
     ).pure[DefsWriter]
+
+  given tupleArray[A: PrefixItemsOf]: SchemaOf[JsonArray[A]] with
+    def apply: DefsWriter[JsonSchema] = summon[PrefixItemsOf[A]].apply.map {
+      case prefixItems =>
+        JsonSchema(JsonSchema.Singular.TupleArray(prefixItems))
+    }
 
   given objWithProperties[A: PropertiesOf: RequiredOf]: SchemaOf[JsonObject[A]]
   with
@@ -235,11 +242,20 @@ object SchemaOf:
         .pure[DefsWriter]
 
 trait PropertiesOf[A]:
-  def apply: DefsWriter[Properties]
-
+  def apply: DefsWriter[Properties] // TODO do we need this case class?
 case class Properties(value: Map[String, JsonSchema])
-case class Defs(value: Map[String, JsonSchema])
 
+trait PrefixItemsOf[A]:
+  def apply: DefsWriter[List[JsonSchema]]
+
+object PrefixItemsOf:
+  given PrefixItemsOf[EmptyTuple] with
+    def apply: DefsWriter[List[JsonSchema]] = List().pure[DefsWriter]
+  given [A: SchemaOf, T <: Tuple: PrefixItemsOf]: PrefixItemsOf[A *: T] with
+    def apply: DefsWriter[List[JsonSchema]] =
+      (summon[SchemaOf[A]].apply, summon[PrefixItemsOf[T]].apply).mapN(_ :: _)
+
+case class Defs(value: Map[String, JsonSchema])
 object Defs:
   def empty: Defs = Defs(Map.empty)
   given Monoid[Defs] with

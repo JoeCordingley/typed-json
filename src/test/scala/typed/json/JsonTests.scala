@@ -4,11 +4,17 @@ import utest.*
 import io.circe.literal.*
 import io.circe.Decoder
 import io.circe.syntax.*
+import cats.Id
 
 object JsonTests extends TestSuite {
-  enum Tree[A]:
+  type Tree[A] = TreeF[Id, A]
+  object Tree:
+    def leaf[A](value: A): Tree[A] = TreeF.Leaf(value)
+    def branch[A](left: Tree[A], right: Tree[A]): Tree[A] =
+      TreeF.Branch(left, right)
+  enum TreeF[F[_], A]:
     case Leaf(value: A)
-    case Branch(left: Tree[A], right: Tree[A])
+    case Branch(left: F[TreeF[F, A]], right: F[TreeF[F, A]])
 
   val tests = Tests {
 
@@ -162,25 +168,20 @@ object JsonTests extends TestSuite {
         assert(json.as[JsonType] == Right(jsonValue))
       }
     }
-    test("recursiveRef") {
+    test("recursive-ref") {
       type Unfixed[A, B] = Either[A, JsonObject[(("left", B), ("right", B))]]
       type JsonType[A] = Fix[[B] =>> Unfixed[A, B]]
       def toJson[A]: Tree[A] => JsonType[A] = {
-        case Tree.Leaf(a) => Fix(Left(a))
-        case Tree.Branch(left, right) =>
+        case TreeF.Leaf(a) => Fix(Left(a))
+        case TreeF.Branch(left, right) =>
           Fix(
             Right(
               JsonObject(("left" -> toJson(left), "right" -> toJson(right)))
             )
           )
       }
-      def fromJson[A]: JsonType[A] => Tree[A] = {
-        case Fix(Left(a)) => Tree.Leaf(a)
-        case Fix(Right(JsonObject((("left", l), ("right", r))))) =>
-          Tree.Branch(fromJson(l), fromJson(r))
-      }
       val tree: Tree[Int] =
-        Tree.Branch(Tree.Branch(Tree.Leaf(1), Tree.Leaf(2)), Tree.Leaf(3))
+        Tree.branch(Tree.branch(Tree.leaf(1), Tree.leaf(2)), Tree.leaf(3))
       val jsonValue: JsonType[Int] = toJson(tree)
       val json = json"""
        {
@@ -196,6 +197,54 @@ object JsonTests extends TestSuite {
       }
       test("decoding") {
         assert(json.as[JsonType[Int]] == Right(jsonValue))
+      }
+    }
+    test("recursive-ref-with-opt") {
+      type Unfixed[A, B] =
+        Either[A, JsonObject[(Option[("left", B)], Option[("right", B)])]]
+      type JsonType[A] = Fix[[B] =>> Unfixed[A, B]]
+      def toJson[A]: TreeF[Option, A] => JsonType[A] = {
+        case TreeF.Leaf(a) => Fix(Left(a))
+        case TreeF.Branch(left, right) =>
+          Fix(
+            Right(
+              JsonObject(
+                (left.map("left" -> toJson(_)), right.map("right" -> toJson(_)))
+              )
+            )
+          )
+      }
+      val tree: TreeF[Option, Int] = TreeF.Branch(
+        Some(TreeF.Branch(Some(TreeF.Leaf(1)), None)),
+        Some(TreeF.Leaf(3))
+      )
+      val jsonValue: JsonType[Int] = toJson(tree)
+      val json = json"""
+       {
+        "left": {
+          "left" : 1
+        },
+        "right": 3
+       }
+       """
+      test("encoding") {
+        assert(jsonValue.asJson == json)
+      }
+      test("decoding") {
+        assert(json.as[JsonType[Int]] == Right(jsonValue))
+      }
+    }
+    test("tuple-arrays") {
+      type JsonType = JsonArray[(String, Int)]
+      val jsonValue = JsonArray(("firstElement", 42))
+      val json = json"""
+      ["firstElement", 42]
+    """
+      test("encoding") {
+        assert(jsonValue.asJson == json)
+      }
+      test("decoding") {
+        assert(json.as[JsonType] == Right(jsonValue))
       }
     }
 

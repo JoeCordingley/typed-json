@@ -17,6 +17,7 @@ object JsonSchemaCodec:
           Option[("type", Either[SchemaType, JsonArray[List[SchemaType]]])],
           Option[("properties", JsonObject[Map[String, A]])],
           Option[("required", JsonArray[List[String]])],
+          Option[("prefixItems", JsonArray[List[A]])],
           Option[("items", A)],
           Option[("additionalProperties", A)],
           Option[("format", String)],
@@ -31,11 +32,13 @@ object JsonSchemaCodec:
     ]
   ]
   val `true`: JsonSchemaCodec = Fix(Left(true))
+  val `false`: JsonSchemaCodec = Fix(Left(false))
   def `object`(
       `$defs`: Option[CodecMap],
       `type`: Option[Either[SchemaType, JsonArray[List[SchemaType]]]] = None,
       properties: Option[CodecMap] = None,
       required: Option[JsonArray[List[String]]] = None,
+      prefixItems: Option[JsonArray[List[JsonSchemaCodec]]] = None,
       items: Option[JsonSchemaCodec] = None,
       additionalProperties: Option[JsonSchemaCodec] = None,
       format: Option[String] = None,
@@ -52,6 +55,7 @@ object JsonSchemaCodec:
           `type`.map("type" -> _),
           properties.map("properties" -> _),
           required.map("required" -> _),
+          prefixItems.map("prefixItems" -> _),
           items.map("items" -> _),
           additionalProperties.map(
             "additionalProperties" -> _
@@ -124,17 +128,24 @@ object JsonSchemaCodec:
       simplyTyped(SchemaType.Boolean, removeType, maybeDefs)
     case JsonSchema.Singular.Number =>
       simplyTyped(SchemaType.Number, removeType, maybeDefs)
-    case JsonSchema.Singular.Array(
+    case JsonSchema.Singular.ListArray(
           JsonSchema(List(JsonSchema.Singular.True))
         ) =>
       simplyTyped(SchemaType.Array, removeType, maybeDefs)
-    case JsonSchema.Singular.Array(
+    case JsonSchema.Singular.ListArray(
           items
         ) =>
       JsonSchemaCodec.`object`(
         `$defs` = maybeDefs,
         `type` = Some(Left(SchemaType.Array)),
         items = Some(fromSchema(items))
+      )
+    case JsonSchema.Singular.TupleArray(prefixItems) =>
+      JsonSchemaCodec.`object`(
+        `$defs` = maybeDefs,
+        `type` = Some(Left(SchemaType.Array)),
+        prefixItems = Some(JsonArray(prefixItems.map(fromSingular))),
+        items = Some(JsonSchemaCodec.`false`)
       )
     case JsonSchema.Singular.Const(value) =>
       JsonSchemaCodec.`object`(

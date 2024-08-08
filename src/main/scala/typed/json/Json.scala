@@ -21,29 +21,33 @@ case object JsonNull:
 
 type JsonNull = JsonNull.type
 
-case class JsonArray[A](elements: A)
-
 case class JsonMember[A](value: A)
 object JsonMember:
   given nonOpt[K, V](using
       f: JsonFieldCodec[K],
       d: => Decoder[V]
   ): Decoder[JsonMember[(K, V)]] =
-    Decoder.instance(hcursor =>
-      d.at(f.encode).map(v => JsonMember(f.decode -> v)).apply(hcursor)
-    )
+    d.at(f.encode).map(v => JsonMember(f.decode -> v)).apply(_)
 
-  given opt[K, V: Decoder](using
-      f: JsonFieldCodec[K]
-  ): Decoder[JsonMember[Option[(K, V)]]] = _.downField(f.encode).success
-    .traverse(_.as[V].map(f.decode -> _))
-    .map(JsonMember(_))
+  given opt[K, V](using
+      f: JsonFieldCodec[K],
+      d: => Decoder[V]
+  ): Decoder[JsonMember[Option[(K, V)]]] =
+    _.downField(f.encode).success
+      .traverse(_.as[V].map(f.decode -> _))
+      .map(JsonMember(_))
+
+case class JsonArray[A](elements: A)
 
 object JsonArray {
-  given [A: Encoder]: Encoder[JsonArray[List[A]]] =
+  given listEncoder[A: Encoder]: Encoder[JsonArray[List[A]]] =
     Encoder[List[A]].contramap(_.elements)
-  given [A: Decoder]: Decoder[JsonArray[List[A]]] =
+  given listDecoder[A: Decoder]: Decoder[JsonArray[List[A]]] =
     Decoder[List[A]].map(JsonArray(_))
+  given tupleEncoder[T <: Tuple: Encoder]: Encoder[JsonArray[T]] =
+    Encoder[T].contramap(_.elements)
+  given tupleDecoder[T <: Tuple: Decoder]: Decoder[JsonArray[T]] =
+    Decoder[T].map(JsonArray(_))
 }
 
 trait JsonFieldCodec[A]:
