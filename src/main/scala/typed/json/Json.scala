@@ -25,10 +25,13 @@ case class JsonArray[A](elements: A)
 
 case class JsonMember[A](value: A)
 object JsonMember:
-  given nonOpt[K, V: Decoder](using
-      f: JsonFieldCodec[K]
+  given nonOpt[K, V](using
+      f: JsonFieldCodec[K],
+      d: => Decoder[V]
   ): Decoder[JsonMember[(K, V)]] =
-    Decoder[V].at(f.encode).map(v => JsonMember(f.decode -> v))
+    Decoder.instance(hcursor =>
+      d.at(f.encode).map(v => JsonMember(f.decode -> v)).apply(hcursor)
+    )
 
   given opt[K, V: Decoder](using
       f: JsonFieldCodec[K]
@@ -66,6 +69,8 @@ object JsonObject:
     (Decoder[JsonMember[A]], Decoder[JsonObject[T]]).mapN {
       case (JsonMember(a), JsonObject(t)) => JsonObject(a *: t)
     }
+  given [A: Decoder]: Decoder[JsonObject[Map[String, A]]] =
+    Decoder[Map[String, A]].map(JsonObject(_))
   type Solo[A] = JsonObject[A *: EmptyTuple]
   object Solo:
     def apply[A](a: A): Solo[A] = JsonObject(a *: EmptyTuple)

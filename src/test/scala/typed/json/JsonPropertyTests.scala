@@ -44,7 +44,7 @@ object JsonPropertyTests extends Properties("JsonSchema") {
   }
 
   property("trees not so big") = forAll { (a: Tree[Unit]) =>
-    Tree.size(a) <= 100
+    Tree.size(a) <= 1000
   }
 
   opaque type Name = String

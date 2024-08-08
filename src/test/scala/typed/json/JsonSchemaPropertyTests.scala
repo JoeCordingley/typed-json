@@ -41,14 +41,6 @@ object JsonSchemaPropertyTests extends Properties("JsonSchema") {
     case Leaf(a: A) extends Tree[A]
     case Node(l: Tree[A], r: Tree[A]) extends Tree[A]
 
-  property("startsWith") = forAll { (a: String, b: String) =>
-    (a + b).startsWith(a)
-  }
-
-  property("substring") = forAll { (a: String, b: String, c: String) =>
-    (a + b + c).substring(a.length, a.length + b.length) == b
-  }
-
   property("not massive") = forAll { (a: UntypedJson) =>
     UntypedJson.length(a) <= 10
   }

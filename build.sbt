@@ -6,7 +6,7 @@ ThisBuild / version := "0.1.0"
 lazy val `root` = (project in file("."))
   .settings(
     organization := "com.joecordingley",
-    scalaVersion := "3.3.1",
+    scalaVersion := "3.4.2",
     name := "typed-json",
     libraryDependencies ++= List(
       "org.http4s" %% "http4s-core" % "1.0.0-M38",
