@@ -144,7 +144,7 @@ object JsonSchemaCodec:
       JsonSchemaCodec.`object`(
         `$defs` = maybeDefs,
         `type` = Some(Left(SchemaType.Array)),
-        prefixItems = Some(JsonArray(prefixItems.map(fromSingular))),
+        prefixItems = Some(JsonArray(prefixItems.map(fromSchema))),
         items = Some(JsonSchemaCodec.`false`)
       )
     case JsonSchema.Singular.Const(value) =>

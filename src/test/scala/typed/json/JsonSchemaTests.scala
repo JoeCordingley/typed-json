@@ -629,7 +629,7 @@ object JsonSchemaTests extends TestSuite {
               "type": "string"
             },
             {
-              "type": "int"
+              "type": "integer"
             }
           ],
           "items": false
