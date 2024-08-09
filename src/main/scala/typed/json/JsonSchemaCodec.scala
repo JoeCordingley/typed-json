@@ -14,6 +14,7 @@ object JsonSchemaCodec:
     Boolean,
     JsonObject[
       (
+          Option[("$schema", String)],
           Option[("type", Either[SchemaType, JsonArray[List[SchemaType]]])],
           Option[("properties", JsonObject[Map[String, A]])],
           Option[("required", JsonArray[List[String]])],
@@ -34,6 +35,7 @@ object JsonSchemaCodec:
   val `true`: JsonSchemaCodec = Fix(Left(true))
   val `false`: JsonSchemaCodec = Fix(Left(false))
   def `object`(
+      `$schema`: Option[String],
       `$defs`: Option[CodecMap],
       `type`: Option[Either[SchemaType, JsonArray[List[SchemaType]]]] = None,
       properties: Option[CodecMap] = None,
@@ -52,6 +54,7 @@ object JsonSchemaCodec:
     Right(
       JsonObject(
         (
+          `$schema`.map("$schema" -> _),
           `type`.map("type" -> _),
           properties.map("properties" -> _),
           required.map("required" -> _),
@@ -73,106 +76,119 @@ object JsonSchemaCodec:
     )
   )
 
-  def simplyTyped(
-      s: SchemaType,
-      removeType: Boolean,
-      defs: Option[CodecMap]
-  ): JsonSchemaCodec =
-    if removeType then JsonSchemaCodec.`true`
-    else
-      JsonSchemaCodec.`object`(
-        `$defs` = defs,
-        `type` = Some(Left(s))
-      )
-
   def createDefs(defs: Map[String, JsonSchema]): JsonObject[
     Map[String, JsonSchemaCodec]
   ] = JsonObject(defs.view.mapValues(fromSchema).toMap)
 
   def fromSingular(
+      metaSchema: Option[String],
       removeType: Boolean,
-      maybeDefs: Option[CodecMap]
-  ): JsonSchema.Singular => JsonSchemaCodec = {
-    case JsonSchema.Singular.String(None, None, None) =>
-      simplyTyped(SchemaType.String, removeType, maybeDefs)
-    case JsonSchema.Singular.String(format, minLength, maxLength) =>
-      JsonSchemaCodec.`object`(
-        `$defs` = maybeDefs,
-        `type` = if removeType then None else Some(Left(SchemaType.String)),
-        format = format,
-        minLength = minLength,
-        maxLength = maxLength
-      )
-    case JsonSchema.Singular.True => JsonSchemaCodec.`true`
-    case JsonSchema.Singular.Null =>
-      simplyTyped(SchemaType.Null, removeType, maybeDefs)
-    case JsonSchema.Singular.Integer =>
-      simplyTyped(SchemaType.Integer, removeType, maybeDefs)
-    case JsonSchema.Singular.Object(None, None, None) if removeType =>
-      JsonSchemaCodec.`true`
-    case JsonSchema.Singular.Object(
-          maybeProperties,
-          maybeRequired,
-          maybeAdditionalProperties
-        ) =>
-      JsonSchemaCodec.`object`(
-        `$defs` = maybeDefs,
-        `type` = if removeType then None else Some(Left(SchemaType.Object)),
-        properties = maybeProperties.map(properties =>
-          JsonObject(properties.view.mapValues(fromSchema).toMap)
-        ),
-        required = maybeRequired.map(JsonArray(_)),
-        additionalProperties = maybeAdditionalProperties.map(fromSchema)
-      )
-    case JsonSchema.Singular.Boolean =>
-      simplyTyped(SchemaType.Boolean, removeType, maybeDefs)
-    case JsonSchema.Singular.Number =>
-      simplyTyped(SchemaType.Number, removeType, maybeDefs)
-    case JsonSchema.Singular.ListArray(
-          JsonSchema(List(JsonSchema.Singular.True))
-        ) =>
-      simplyTyped(SchemaType.Array, removeType, maybeDefs)
-    case JsonSchema.Singular.ListArray(
-          items
-        ) =>
-      JsonSchemaCodec.`object`(
-        `$defs` = maybeDefs,
-        `type` = Some(Left(SchemaType.Array)),
-        items = Some(fromSchema(items))
-      )
-    case JsonSchema.Singular.TupleArray(prefixItems) =>
-      JsonSchemaCodec.`object`(
-        `$defs` = maybeDefs,
-        `type` = Some(Left(SchemaType.Array)),
-        prefixItems = Some(JsonArray(prefixItems.map(fromSchema))),
-        items = Some(JsonSchemaCodec.`false`)
-      )
-    case JsonSchema.Singular.Const(value) =>
-      JsonSchemaCodec.`object`(
-        `$defs` = maybeDefs,
-        const = Some(value)
-      )
-    case JsonSchema.Singular.Ref(JsonSchema.Reference.Root(values)) =>
-      JsonSchemaCodec.`object`(
-        `$defs` = maybeDefs,
-        `$ref` = Some(values.mkString("#/", "/", ""))
-      )
+      maybeDefs: Option[CodecMap],
+      singular: JsonSchema.Singular
+  ): JsonSchemaCodec = {
+    def simplyTyped(
+        s: SchemaType
+    ): JsonSchemaCodec =
+      if removeType then JsonSchemaCodec.`true`
+      else
+        JsonSchemaCodec.`object`(
+          `$schema` = metaSchema,
+          `$defs` = maybeDefs,
+          `type` = Some(Left(s))
+        )
+    singular match {
+      case JsonSchema.Singular.String(None, None, None) =>
+        simplyTyped(SchemaType.String)
+      case JsonSchema.Singular.String(format, minLength, maxLength) =>
+        JsonSchemaCodec.`object`(
+          `$schema` = metaSchema,
+          `$defs` = maybeDefs,
+          `type` = if removeType then None else Some(Left(SchemaType.String)),
+          format = format,
+          minLength = minLength,
+          maxLength = maxLength
+        )
+      case JsonSchema.Singular.True =>
+        if (metaSchema.nonEmpty || maybeDefs.nonEmpty) then
+          JsonSchemaCodec.`object`(`$schema` = metaSchema, `$defs` = maybeDefs)
+        else JsonSchemaCodec.`true`
+      case JsonSchema.Singular.Null =>
+        simplyTyped(SchemaType.Null)
+      case JsonSchema.Singular.Integer =>
+        simplyTyped(SchemaType.Integer)
+      case JsonSchema.Singular.Object(None, None, None) if removeType =>
+        JsonSchemaCodec.`true`
+      case JsonSchema.Singular.Object(
+            maybeProperties,
+            maybeRequired,
+            maybeAdditionalProperties
+          ) =>
+        JsonSchemaCodec.`object`(
+          `$schema` = metaSchema,
+          `$defs` = maybeDefs,
+          `type` = if removeType then None else Some(Left(SchemaType.Object)),
+          properties = maybeProperties.map(properties =>
+            JsonObject(properties.view.mapValues(fromSchema).toMap)
+          ),
+          required = maybeRequired.map(JsonArray(_)),
+          additionalProperties = maybeAdditionalProperties.map(fromSchema)
+        )
+      case JsonSchema.Singular.Boolean =>
+        simplyTyped(SchemaType.Boolean)
+      case JsonSchema.Singular.Number =>
+        simplyTyped(SchemaType.Number)
+      case JsonSchema.Singular.ListArray(
+            JsonSchema(List(JsonSchema.Singular.True))
+          ) =>
+        simplyTyped(SchemaType.Array)
+      case JsonSchema.Singular.ListArray(
+            items
+          ) =>
+        JsonSchemaCodec.`object`(
+          `$schema` = metaSchema,
+          `$defs` = maybeDefs,
+          `type` = Some(Left(SchemaType.Array)),
+          items = Some(fromSchema(items))
+        )
+      case JsonSchema.Singular.TupleArray(prefixItems) =>
+        JsonSchemaCodec.`object`(
+          `$schema` = metaSchema,
+          `$defs` = maybeDefs,
+          `type` = Some(Left(SchemaType.Array)),
+          prefixItems = Some(JsonArray(prefixItems.map(fromSchema))),
+          items = Some(JsonSchemaCodec.`false`)
+        )
+      case JsonSchema.Singular.Const(value) =>
+        JsonSchemaCodec.`object`(
+          `$schema` = metaSchema,
+          `$defs` = maybeDefs,
+          const = Some(value)
+        )
+      case JsonSchema.Singular.Ref(JsonSchema.Reference.Root(values)) =>
+        JsonSchemaCodec.`object`(
+          `$schema` = metaSchema,
+          `$defs` = maybeDefs,
+          `$ref` = Some(values.mkString("#/", "/", ""))
+        )
+    }
   }
 
   def addToSetStrictly[A](s: Set[A], a: A) =
     if (s contains a) None else Some(s + a)
 
   val fromSchema: JsonSchema => JsonSchemaCodec = fromJsonSchemaWithDefs(
+    None,
     None
   )
 
   def fromJsonSchemaWithDefs(
+      metaSchema: Option[String],
       defs: Option[CodecMap]
   ): JsonSchema => JsonSchemaCodec = {
     type MaybeEncode = Kleisli[Option, JsonSchema, JsonSchemaCodec]
     val single: MaybeEncode = Kleisli {
       case JsonSchema(List(schema)) =>
-        Some(fromSingular(removeType = false, defs)(schema))
+        Some(fromSingular(metaSchema, removeType = false, defs, schema))
       case _ => None
     }
     val describedByTypeAlone: MaybeEncode = Kleisli {
@@ -181,6 +197,7 @@ object JsonSchemaCodec:
           types <- schemas.traverse(JsonSchema.Singular.describedByTypeAlone)
           unique <- types.foldM(Set.empty)(addToSetStrictly)
         } yield JsonSchemaCodec.`object`(
+          `$schema` = metaSchema,
           `$defs` = defs,
           `type` = Some(Right(JsonArray(types.toList)))
         )
@@ -194,6 +211,7 @@ object JsonSchemaCodec:
         }
         .map(values =>
           JsonSchemaCodec.`object`(
+            `$schema` = metaSchema,
             `$defs` = defs,
             `enum` = Some(JsonArray(values.distinct))
           )
@@ -210,13 +228,16 @@ object JsonSchemaCodec:
           }
           .flatten
         JsonSchemaCodec.`object`(
+          `$schema` = metaSchema,
           `type` = maybeSingularType.map(Left(_)),
           anyOf = Some(
             JsonArray(
               schemas.map(
                 fromSingular(
+                  metaSchema = None,
                   removeType = maybeSingularType.isDefined,
-                  maybeDefs = None
+                  maybeDefs = None,
+                  _
                 )
               )
             )
@@ -228,10 +249,12 @@ object JsonSchemaCodec:
       .mapN(_ getOrElse _)
       .run
   }
+  val metaSchema: String = "https://json-schema.org/draft/2020-12/schema"
 
   def of[A: SchemaOf]: JsonSchemaCodec =
     val (Defs(defs), anyOf) = summon[SchemaOf[A]].apply.run
     JsonSchemaCodec.fromJsonSchemaWithDefs(
+      Some(metaSchema),
       if defs.isEmpty then None else Some(createDefs(defs))
     )(anyOf)
 

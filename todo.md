@@ -1,9 +1,12 @@
 - [x] confusion with JsonSchema and AnyOf WithDefs etc
-- [ ] json encoder tests for all schema tests
+- [ ] tidy JsonSchemaCodec
+- [ ] test all values pass all schemas
+- [ ] test meta schema
+- [x] json encoder tests for all schema tests
 - [ ] README with examples
 - [ ] scaladocs
 - [ ] automated release
-- [ ] tuple validation in lists (prefixItems) don't forget to set items to false
+- [x] tuple validation in lists (prefixItems) don't forget to set items to false
 - [x] try removing propertiesOf and requiredOf for simplicity -- don't think it is possible
 - [ ] further refinements
     - [ ] string
@@ -42,3 +45,4 @@
 - [ ] use existing fix maybe
 - [ ] use refinement with iron
 - [ ] expand to openApi
+- [ ] support top level anonymous recursion
