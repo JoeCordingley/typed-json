@@ -9,7 +9,7 @@ import io.circe.Json
 type JsonSchemaCodec = Fix[JsonSchemaCodec.Unfixed]
 
 object JsonSchemaCodec:
-  type CodecMap = JsonObject[Map[String, JsonSchemaCodec]]
+  type Defs = JsonObject[Map[String, JsonSchemaCodec]]
   type Unfixed[A] = Either[
     Boolean,
     JsonObject[
@@ -36,9 +36,9 @@ object JsonSchemaCodec:
   val `false`: JsonSchemaCodec = Fix(Left(false))
   def `object`(
       `$schema`: Option[String],
-      `$defs`: Option[CodecMap],
+      `$defs`: Option[Defs],
       `type`: Option[Either[SchemaType, JsonArray[List[SchemaType]]]] = None,
-      properties: Option[CodecMap] = None,
+      properties: Option[Defs] = None,
       required: Option[JsonArray[List[String]]] = None,
       prefixItems: Option[JsonArray[List[JsonSchemaCodec]]] = None,
       items: Option[JsonSchemaCodec] = None,
@@ -83,7 +83,7 @@ object JsonSchemaCodec:
   def fromSingular(
       metaSchema: Option[String],
       removeType: Boolean,
-      maybeDefs: Option[CodecMap],
+      maybeDefs: Option[Defs],
       singular: JsonSchema.Singular
   ): JsonSchemaCodec = {
     def simplyTyped(
@@ -183,7 +183,7 @@ object JsonSchemaCodec:
 
   def fromJsonSchemaWithDefs(
       metaSchema: Option[String],
-      defs: Option[CodecMap]
+      defs: Option[Defs]
   ): JsonSchema => JsonSchemaCodec = {
     type MaybeEncode = Kleisli[Option, JsonSchema, JsonSchemaCodec]
     val single: MaybeEncode = Kleisli {

@@ -6,6 +6,7 @@ import io.circe
 import cats.syntax.all.*
 import cats.data.{Writer, StateT}
 import cats.*
+import java.time.{LocalDateTime, OffsetDateTime, LocalTime, OffsetTime}
 
 enum SchemaType:
   case String
@@ -147,45 +148,40 @@ object SchemaOf:
         )
       }
 
-  given SchemaOf[String] with
-    def apply: DefsWriter[JsonSchema] =
-      JsonSchema(JsonSchema.Singular.String())
-        .pure[DefsWriter]
+  given SchemaOf[String] = instance(JsonSchema(JsonSchema.Singular.String()))
 
-  given SchemaOf[Int] with
-    def apply: DefsWriter[JsonSchema] =
-      JsonSchema(JsonSchema.Singular.Integer)
-        .pure[DefsWriter]
+  given SchemaOf[Int] = instance(JsonSchema(JsonSchema.Singular.Integer))
 
-  given SchemaOf[Boolean] with
-    def apply: DefsWriter[JsonSchema] =
-      JsonSchema(JsonSchema.Singular.Boolean)
-        .pure[DefsWriter]
+  given SchemaOf[Boolean] = instance(JsonSchema(JsonSchema.Singular.Boolean))
 
-  given SchemaOf[JsonNull] with
-    def apply: DefsWriter[JsonSchema] =
-      JsonSchema(JsonSchema.Singular.Null)
-        .pure[DefsWriter]
+  given SchemaOf[JsonNull] = instance(JsonSchema(JsonSchema.Singular.Null))
 
-  given SchemaOf[circe.JsonObject] with
-    def apply: DefsWriter[JsonSchema] =
-      JsonSchema(JsonSchema.Singular.Object())
-        .pure[DefsWriter]
+  given SchemaOf[circe.JsonObject] = instance(
+    JsonSchema(JsonSchema.Singular.Object())
+  )
 
-  given SchemaOf[circe.Json] with
-    def apply: DefsWriter[JsonSchema] =
-      JsonSchema(JsonSchema.Singular.True)
-        .pure[DefsWriter]
+  given SchemaOf[circe.Json] = instance(JsonSchema(JsonSchema.Singular.True))
 
-  given SchemaOf[Double] with
-    def apply: DefsWriter[JsonSchema] =
-      JsonSchema(JsonSchema.Singular.Number)
-        .pure[DefsWriter]
+  given SchemaOf[Double] = instance(JsonSchema(JsonSchema.Singular.Number))
 
-  given SchemaOf[Email] with
-    def apply: DefsWriter[JsonSchema] =
-      JsonSchema(JsonSchema.Singular.String(format = Some("email")))
-        .pure[DefsWriter]
+  given SchemaOf[Email] = instance(
+    JsonSchema(JsonSchema.Singular.String(format = Some("email")))
+  )
+
+  given SchemaOf[LocalDateTime] = instance(
+    JsonSchema(JsonSchema.Singular.String(format = Some("date-time")))
+  )
+
+  given SchemaOf[OffsetDateTime] = instance(
+    JsonSchema(JsonSchema.Singular.String(format = Some("date-time")))
+  )
+  given SchemaOf[LocalTime] = instance(
+    JsonSchema(JsonSchema.Singular.String(format = Some("time")))
+  )
+
+  given SchemaOf[OffsetTime] = instance(
+    JsonSchema(JsonSchema.Singular.String(format = Some("time")))
+  )
 
   given [A: SchemaOf]: SchemaOf[JsonArray[List[A]]] with
     def apply: DefsWriter[JsonSchema] =

@@ -1,7 +1,7 @@
 - [x] confusion with JsonSchema and AnyOf WithDefs etc
 - [ ] tidy JsonSchemaCodec
-- [ ] test all values pass all schemas
-- [ ] test meta schema
+- [x] test all values pass all schemas
+- [ ] generate meta schema
 - [x] json encoder tests for all schema tests
 - [ ] README with examples
 - [ ] scaladocs
@@ -12,9 +12,9 @@
     - [ ] string
         - [ ] pattern
         - [ ] built in formats
-            - [ ] date-time
-            - [ ] time
-            - [ ] date
+            - [x] date-time
+            - [x] time
+            - [x] date
             - [ ] duration
             - [x] email
             - [ ] idn-email
