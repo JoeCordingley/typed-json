@@ -28,12 +28,11 @@ object SchemaType:
       case Array   => "array"
       case Number  => "number"
     }
-
-  given SchemaOf[SchemaType] with
-    def apply: DefsWriter[JsonSchema] =
-      JsonSchema(
-        SchemaType.values.toList.map(s => JsonSchema.Singular.Const(s.asJson))
-      ).pure[DefsWriter]
+  given SchemaOf[SchemaType] = SchemaOf.instance(
+    JsonSchema(
+      SchemaType.values.toList.map(s => JsonSchema.Singular.Const(s.asJson))
+    )
+  )
 
   def fromSingular: JsonSchema.Singular => Option[SchemaType] = {
     case _: JsonSchema.Singular.String    => Some(String)
@@ -195,13 +194,14 @@ object SchemaOf:
     def apply: DefsWriter[JsonSchema] =
       summon[SchemaOf[Referenced[A, F[RootDefsReference[A]]]]].apply
 
-  given [A <: String: ValueOf]: SchemaOf[RootDefsReference[A]] with
-    def apply: DefsWriter[JsonSchema] = JsonSchema(
+  given [A <: String: ValueOf]: SchemaOf[RootDefsReference[A]] = instance(
+    JsonSchema(
       JsonSchema.Singular.Ref(
         JsonSchema.Reference
           .Root(List("$defs", summon[ValueOf[A]].value))
       )
-    ).pure[DefsWriter]
+    )
+  )
 
   given tupleArray[A: PrefixItemsOf]: SchemaOf[JsonArray[A]] with
     def apply: DefsWriter[JsonSchema] = summon[PrefixItemsOf[A]].apply.map {
@@ -229,13 +229,11 @@ object SchemaOf:
       ).mapN { case (JsonSchema(x), JsonSchema(y)) =>
         JsonSchema(x ++ y)
       }
-
-  given [A: ValueOf: Encoder]: SchemaOf[A] with
-    def apply: DefsWriter[JsonSchema] =
-      JsonSchema(
-        JsonSchema.Singular.Const(summon[ValueOf[A]].value.asJson)
-      )
-        .pure[DefsWriter]
+  given [A: ValueOf: Encoder]: SchemaOf[A] = instance(
+    JsonSchema(
+      JsonSchema.Singular.Const(summon[ValueOf[A]].value.asJson)
+    )
+  )
 
 trait PropertiesOf[A]:
   def apply: DefsWriter[Properties] // TODO do we need this case class?

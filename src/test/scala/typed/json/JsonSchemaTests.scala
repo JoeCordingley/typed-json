@@ -11,7 +11,6 @@ import io.circe
 import cats.syntax.all.*
 import io.circe.DecodingFailure
 import io.circe.DecodingFailure.Reason
-import scala.annotation.experimental
 
 object JsonSchemaTests extends TestSuite {
   def addToSetStrictly[A](s: Set[A], a: A) =
