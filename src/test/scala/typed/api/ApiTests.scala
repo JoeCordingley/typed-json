@@ -1,7 +1,7 @@
 package typed.api
 
 import utest.*
-import org.http4s.{HttpApp, Request}
+import org.http4s.HttpApp
 import cats.effect.IO
 import cats.syntax.all.*
 import org.http4s.client.Client
@@ -12,13 +12,14 @@ object ApiTests extends TestSuite {
     test("get root") {
 
       type Api = Route[IO, Method.Get, Path.Root, Status.Ok]
-      val api: Api = { case Method.Get -> Path.Root =>
+
+      val api: Api = { case Request(Method.Get, Path.Root) =>
         Status.Ok.pure[IO]
       }
 
       val status = Client
         .fromHttpApp(Routes.fromApi(api))
-        .status(Request[IO]())
+        .status(http4s.Request[IO]())
         .unsafeRunSync()
       assert(status == Status.Ok)
     }
