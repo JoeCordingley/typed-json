@@ -43,7 +43,26 @@ type Http4sKleisli[F[_], A] =
   Kleisli[[X] =>> OptionT[F, X], http4s.Request[F], A]
 
 trait FromHttp4s[A]:
-  def apply[F[_]]: Http4sKleisli[F, A]
+  def apply[F[_]: Applicative]: Http4sKleisli[F, A]
+object FromHttp4s:
+  given FromHttp4s[Method.Get] with
+    def apply[F[_]: Applicative] =
+      Kleisli {
+        case r if r.method == http4s.Method.GET => OptionT.some(Method.Get)
+        case _                                  => OptionT.none
+      }
+  given FromHttp4s[Path.Root] with
+    def apply[F[_]: Applicative] =
+      Kleisli {
+        case req if req.uri.path == http4s.Uri.Path.Root =>
+          OptionT.some(Path.Root)
+        case _ => OptionT.none
+      }
 
 trait ResponseOf[A]:
   def apply[F[_]](a: A): http4s.Response[F]
+
+object ResponseOf:
+  given ResponseOf[Status.Ok] with
+    def apply[F[_]](value: Status.Ok): http4s.Response[F] =
+      http4s.Response(status = http4s.Status.Ok)
