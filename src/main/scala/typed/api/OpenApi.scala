@@ -11,14 +11,15 @@ type OpenApiSchemaCodec = JsonObject[
       Option[
         (
             "paths",
-            JsonObject[
-              Map[OpenApiSchemaCodec.PathPattern, OpenApiSchemaCodec.PathItem]
-            ]
+            OpenApiSchemaCodec.Paths
         )
       ]
   )
 ]
 object OpenApiSchemaCodec:
+  type Paths = JsonObject[
+    Map[OpenApiSchemaCodec.PathPattern, OpenApiSchemaCodec.PathItem]
+  ]
   type Info = JsonObject[
     (
         ("title", String),
@@ -34,6 +35,9 @@ object OpenApiSchemaCodec:
   type PathItem = JsonObject.Solo[
     Option[("get", Operation)]
   ]
+  object PathItem:
+    def get(operation: Operation): PathItem =
+      JsonObject.Solo(Some("get" -> operation))
   type Operation = JsonObject.Solo[
     Option[("responses", Responses)]
   ]
@@ -46,11 +50,31 @@ object OpenApiSchemaCodec:
   type Response = JsonObject.Solo[
     ("description", String)
   ]
-  def fromOpenApiSchema: OpenApiSchema => OpenApiSchemaCodec = ???
+  def fromOpenApiSchema(info: Info, paths: Paths): OpenApiSchemaCodec =
+    JsonObject(
+      (
+        "openapi" -> "3.1.0",
+        "info" -> info,
+        Some("paths" -> paths)
+      )
+    )
   def of[A](info: typed.api.Info)(using
       schema: OpenApiSchemaOf[A]
   ): OpenApiSchemaCodec =
-    fromOpenApiSchema(schema.apply)
+    fromOpenApiSchema(infoCodec(info), pathsCodec(schema.apply))
+  def pathsCodec(schema: OpenApiSchema): Paths = JsonObject(schema.paths.map {
+    case (path, typed.api.PathItem(method, operation)) =>
+      PathPattern(path) -> pathItemCodec(method, operationCodec(operation))
+  })
+  def infoCodec: typed.api.Info => Info = {
+    case typed.api.Info(title, version) =>
+      JsonObject("title" -> title, "version" -> version)
+  }
+  def pathItemCodec: (Methods, Operation) => PathItem = {
+    case (Methods.Get, operation) => PathItem.get(operation)
+  }
+
+  def operationCodec: typed.api.Operation => Operation = ???
 
 trait OpenApiSchemaOf[A]:
   def apply: OpenApiSchema
@@ -58,7 +82,11 @@ trait OpenApiSchemaOf[A]:
 object OpenApiSchemaOf:
   given [F[_], Request, Response]: OpenApiSchemaOf[Route[F, Request, Response]]
   with
-    def apply: OpenApiSchema = OpenApiSchema()
+    def apply: OpenApiSchema = OpenApiSchema(Map.empty)
 
-case class OpenApiSchema()
+case class OpenApiSchema(paths: Map[String, PathItem])
 case class Info(title: String, version: String)
+case class PathItem(method: Methods, operation: Operation)
+case class Operation()
+enum Methods:
+  case Get
