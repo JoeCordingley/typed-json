@@ -6,8 +6,9 @@ import cats.data.Kleisli
 import cats.data.OptionT
 import cats.*
 import cats.implicits.*
+import io.circe.syntax.*
 
-type Route[F[_], Method, Path, Status] = Request[Method, Path] => F[Status]
+type Route[F[_], Request, Status] = Request => F[Status]
 
 object Method:
   object Get
@@ -24,11 +25,9 @@ object Path:
   type Root = Root.type
 
 object Routes:
-  def fromApi[F[
-      _
-  ]: Monad, Method: FromHttp4s, Path: FromHttp4s, Response: ResponseOf](
-      route: Route[F, Method, Path, Response]
-  ): HttpApp[F] = requestOf[F, Method, Path]
+  def fromApi[F[_]: Monad, Request: FromHttp4s, Response: ResponseOf](
+      route: Route[F, Request, Response]
+  ): HttpApp[F] = summon[FromHttp4s[Request]].apply
     .andThen(Kleisli(route).mapK(OptionT.liftK))
     .map(summon[ResponseOf[Response]].apply[F])
     .orNotFound
@@ -43,16 +42,22 @@ type Http4sKleisli[F[_], A] =
   Kleisli[[X] =>> OptionT[F, X], http4s.Request[F], A]
 
 trait FromHttp4s[A]:
-  def apply[F[_]: Applicative]: Http4sKleisli[F, A]
+  def apply[F[_]: Monad]: Http4sKleisli[F, A]
 object FromHttp4s:
+  given [Method, Path](using
+      m: FromHttp4s[Method],
+      p: FromHttp4s[Path]
+  ): FromHttp4s[Request[Method, Path]] with
+    def apply[F[_]: Monad]: Http4sKleisli[F, Request[Method, Path]] =
+      (m.apply[F], p.apply[F]).mapN(Request(_, _))
   given FromHttp4s[Method.Get] with
-    def apply[F[_]: Applicative] =
+    def apply[F[_]: Monad] =
       Kleisli {
         case r if r.method == http4s.Method.GET => OptionT.some(Method.Get)
         case _                                  => OptionT.none
       }
   given FromHttp4s[Path.Root] with
-    def apply[F[_]: Applicative] =
+    def apply[F[_]: Monad] =
       Kleisli {
         case req if req.uri.path == http4s.Uri.Path.Root =>
           OptionT.some(Path.Root)

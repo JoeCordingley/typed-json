@@ -1,7 +1,7 @@
 package typed.json
 
 import cats.syntax.all.*
-import io.circe.{Decoder, Encoder, Codec, Json}
+import io.circe.{Decoder, Encoder, Codec, Json, KeyDecoder, KeyEncoder}
 import io.circe
 import scala.annotation.targetName
 import scala.util.matching.Regex
@@ -73,8 +73,8 @@ object JsonObject:
     (Decoder[JsonMember[A]], Decoder[JsonObject[T]]).mapN {
       case (JsonMember(a), JsonObject(t)) => JsonObject(a *: t)
     }
-  given [A: Decoder]: Decoder[JsonObject[Map[String, A]]] =
-    Decoder[Map[String, A]].map(JsonObject(_))
+  given [K: KeyDecoder, V: Decoder]: Decoder[JsonObject[Map[K, V]]] =
+    Decoder[Map[K, V]].map(JsonObject(_))
   type Solo[A] = JsonObject[A *: EmptyTuple]
   object Solo:
     def apply[A](a: A): Solo[A] = JsonObject(a *: EmptyTuple)
@@ -84,6 +84,7 @@ object JsonObject:
 trait JsonMembersEncoder[A]:
   def encode(a: A): List[(String, Json)]
 
+given KeyEncoder[Regex] = _.toString
 object JsonMembersEncoder:
   given JsonMembersEncoder[EmptyTuple] = _ => List.empty
   given nonOpt[K: JsonFieldCodec, V, T <: Tuple: JsonMembersEncoder](using
@@ -102,8 +103,15 @@ object JsonMembersEncoder:
       ].encode(tail)
     case None *: tail => summon[JsonMembersEncoder[T]].encode(tail)
   }
-  given [V](using e: => Encoder[V]): JsonMembersEncoder[Map[String, V]] =
-    _.view.mapValues(Encoder[V].apply).toList
+  given [K, V](using
+      k: KeyEncoder[K],
+      v: => Encoder[V]
+  ): JsonMembersEncoder[Map[K, V]] =
+    _.view
+      .map { case (key, value) =>
+        k.apply(key) -> v.apply(value)
+      }
+      .toList
 
 type /:[L, R] = Either[L, R]
 

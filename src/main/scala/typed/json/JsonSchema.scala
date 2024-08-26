@@ -7,6 +7,7 @@ import cats.syntax.all.*
 import cats.data.{Writer, StateT}
 import cats.*
 import java.time.{LocalDateTime, OffsetDateTime, LocalTime, OffsetTime}
+import scala.util.matching.Regex
 
 enum SchemaType:
   case String
@@ -49,6 +50,9 @@ case class RecursiveRef[A, F[_]](fixed: Fix[F])
 
 case class JsonSchema(anyOf: List[JsonSchema.Singular])
 
+enum Format:
+  case Regex
+
 object JsonSchema:
   def apply(anyOf: Singular*): JsonSchema = JsonSchema(List(anyOf*))
 
@@ -64,9 +68,17 @@ object JsonSchema:
   def `object`(
       properties: Option[Map[String, JsonSchema]] = None,
       required: Option[List[String]] = None,
-      additionalProperties: Option[JsonSchema] = None
+      additionalProperties: Option[JsonSchema] = None,
+      patternProperties: Option[Map[Regex, JsonSchema]] = None,
+      propertyNameFormat: Option[Format] = None
   ): JsonSchema = singular(
-    Singular.Object(properties, required, additionalProperties)
+    Singular.Object(
+      properties,
+      required,
+      additionalProperties,
+      patternProperties,
+      propertyNameFormat
+    )
   )
 
   val boolean: JsonSchema = singular(Singular.Boolean)
@@ -97,7 +109,9 @@ object JsonSchema:
     case Object(
         properties: Option[Map[java.lang.String, JsonSchema]] = None,
         required: Option[List[java.lang.String]] = None,
-        additionalProperties: Option[JsonSchema] = None
+        additionalProperties: Option[JsonSchema] = None,
+        patternProperties: Option[Map[Regex, JsonSchema]] = None,
+        propertyNamesFormat: Option[Format] = None
     )
     case Boolean
     case Number
@@ -114,8 +128,14 @@ object JsonSchema:
     def isSimple: Singular => Boolean = {
       case String(format, minLength, maxLength) =>
         format.isEmpty && minLength.isEmpty && maxLength.isEmpty
-      case Object(properties, required, additionalProperties) =>
-        properties.isEmpty && required.isEmpty && additionalProperties.isEmpty
+      case Object(
+            properties,
+            required,
+            additionalProperties,
+            patternProperties,
+            propertyNameFormat
+          ) =>
+        properties.isEmpty && required.isEmpty && additionalProperties.isEmpty && patternProperties.isEmpty && propertyNameFormat.isEmpty
       case ListArray(JsonSchema(schemas)) =>
         schemas == List(JsonSchema.Singular.True)
       case _ => true
@@ -143,6 +163,29 @@ object SchemaOf:
         JsonSchema(
           JsonSchema.Singular.Object(
             additionalProperties = Some(anyOf)
+          )
+        )
+      }
+
+  given patternMap[K: MatchesPattern, A: SchemaOf]
+      : SchemaOf[JsonObject[Map[K, A]]] with
+    def apply: DefsWriter[JsonSchema] =
+      summon[SchemaOf[A]].apply.map { anyOf =>
+        JsonSchema(
+          JsonSchema.Singular.Object(
+            patternProperties =
+              Some(Map(summon[MatchesPattern[K]].apply -> anyOf))
+          )
+        )
+      }
+
+  given regexMap[A: SchemaOf]: SchemaOf[JsonObject[Map[Regex, A]]] with
+    def apply: DefsWriter[JsonSchema] =
+      summon[SchemaOf[A]].apply.map { anyOf =>
+        JsonSchema(
+          JsonSchema.Singular.Object(
+            additionalProperties = Some(anyOf),
+            propertyNamesFormat = Some(Format.Regex)
           )
         )
       }
@@ -248,6 +291,9 @@ object PrefixItemsOf:
   given [A: SchemaOf, T <: Tuple: PrefixItemsOf]: PrefixItemsOf[A *: T] with
     def apply: DefsWriter[List[JsonSchema]] =
       (summon[SchemaOf[A]].apply, summon[PrefixItemsOf[T]].apply).mapN(_ :: _)
+
+trait MatchesPattern[A]:
+  def apply: Regex
 
 case class Defs(value: Map[String, JsonSchema])
 object Defs:
