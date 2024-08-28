@@ -3,6 +3,7 @@ package typed.api
 import typed.json.{JsonObject, MatchesPattern}
 import scala.util.matching.Regex
 import io.circe.KeyEncoder
+import typed.api.OpenApiSchemaCodec.StatusCodePattern
 
 type OpenApiSchemaCodec = JsonObject[
   (
@@ -18,7 +19,7 @@ type OpenApiSchemaCodec = JsonObject[
 ]
 object OpenApiSchemaCodec:
   type Paths = JsonObject[
-    Map[OpenApiSchemaCodec.PathPattern, OpenApiSchemaCodec.PathItem]
+    Map[PathPattern, OpenApiSchemaCodec.PathItem]
   ]
   type Info = JsonObject[
     (
@@ -26,11 +27,6 @@ object OpenApiSchemaCodec:
         ("version", String)
     )
   ]
-  case class PathPattern(value: String)
-  object PathPattern:
-    given KeyEncoder[PathPattern] = _.value
-    given MatchesPattern[PathPattern] with
-      def apply: Regex = "^/".r
 
   type PathItem = JsonObject.Solo[
     Option[("get", Operation)]
@@ -64,7 +60,7 @@ object OpenApiSchemaCodec:
     fromOpenApiSchema(infoCodec(info), pathsCodec(schema.apply))
   def pathsCodec(schema: OpenApiSchema): Paths = JsonObject(schema.paths.map {
     case (path, typed.api.PathItem(method, operation)) =>
-      PathPattern(path) -> pathItemCodec(method, operationCodec(operation))
+      path -> pathItemCodec(method, operationCodec(operation))
   })
   def infoCodec: typed.api.Info => Info = {
     case typed.api.Info(title, version) =>
@@ -74,19 +70,66 @@ object OpenApiSchemaCodec:
     case (Methods.Get, operation) => PathItem.get(operation)
   }
 
-  def operationCodec: typed.api.Operation => Operation = ???
+  def operationCodec: typed.api.Operation => Operation = {
+    case Operation(Statuses.Ok) =>
+      JsonObject.Solo(
+        Some(
+          "responses" -> JsonObject(
+            Map(
+              StatusCodePattern("200") -> JsonObject.Solo("description" -> "OK")
+            )
+          )
+        )
+      )
+  }
 
 trait OpenApiSchemaOf[A]:
   def apply: OpenApiSchema
 
 object OpenApiSchemaOf:
-  given [F[_], Request, Response]: OpenApiSchemaOf[Route[F, Request, Response]]
-  with
-    def apply: OpenApiSchema = OpenApiSchema(Map.empty)
+  given [F[_], Method: MethodOf, Path: PathPatternOf, Response: OperationOf]
+      : OpenApiSchemaOf[Route[F, Request[Method, Path], Response]] with
+    def apply: OpenApiSchema = OpenApiSchema(
+      Map(
+        summon[PathPatternOf[Path]].apply -> PathItem(
+          summon[MethodOf[Method]].apply,
+          summon[OperationOf[Response]].apply
+        )
+      )
+    )
 
-case class OpenApiSchema(paths: Map[String, PathItem])
+trait PathPatternOf[A]:
+  def apply: PathPattern
+
+object PathPatternOf:
+  given PathPatternOf[Path.Root] with
+    def apply: PathPattern = PathPattern("/")
+
+trait MethodOf[A]:
+  def apply: Methods
+
+object MethodOf:
+  given MethodOf[Method.Get] with
+    def apply: Methods = Methods.Get
+
+trait OperationOf[A]:
+  def apply: Operation
+
+object OperationOf:
+  given OperationOf[Status.Ok] with
+    def apply: Operation = Operation(Statuses.Ok)
+
+case class PathPattern(value: String)
+object PathPattern:
+  given KeyEncoder[PathPattern] = _.value
+  given MatchesPattern[PathPattern] with
+    def apply: Regex = "^/".r
+
+case class OpenApiSchema(paths: Map[PathPattern, PathItem])
 case class Info(title: String, version: String)
 case class PathItem(method: Methods, operation: Operation)
-case class Operation()
+case class Operation(status: Statuses)
+enum Statuses:
+  case Ok
 enum Methods:
   case Get
