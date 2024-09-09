@@ -20,6 +20,7 @@ object Status:
   case object Ok
   type Ok = Ok.type
 
+type :/[L, R] = (L, R)
 object Path:
   case object Root
   type Root = Root.type
@@ -57,11 +58,23 @@ object FromHttp4s:
         case _                                  => OptionT.none
       }
   given FromHttp4s[Path.Root] with
-    def apply[F[_]: Monad] =
+    def apply[F[_]: Monad]: Http4sKleisli[F, Path.Root] =
       Kleisli {
         case req if req.uri.path == http4s.Uri.Path.Root =>
           OptionT.some(Path.Root)
         case _ => OptionT.none
+      }
+  given [A <: String: ValueOf, T: FromHttp4s]: FromHttp4s[T :/ A] with
+    def apply[F[_]: Monad] =
+      val a: A = summon[ValueOf[A]].value
+      Kleisli { r =>
+        r.uri.path.segments.reverse.toList match {
+          case x :: xs if x == http4s.Uri.Path.Segment(a) =>
+            summon[FromHttp4s[T]]
+              .apply(r.withPathInfo(http4s.Uri.Path(xs.toVector.reverse)))
+              .map((_, a))
+          case _ => OptionT.none
+        }
       }
 
 trait ResponseOf[A]:
