@@ -11,6 +11,7 @@ lazy val `root` = (project in file("."))
     libraryDependencies ++= List(
       "org.http4s" %% "http4s-core" % "1.0.0-M38",
       "org.http4s" %% "http4s-client" % "1.0.0-M38",
+      "org.http4s" %% "http4s-circe" % "1.0.0-M38",
       "com.lihaoyi" %% "utest" % "0.8.1" % Test,
       "org.typelevel" %% "cats-core" % "2.12.0",
       "io.circe" %% "circe-core" % "0.14.9",

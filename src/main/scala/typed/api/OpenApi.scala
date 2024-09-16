@@ -102,8 +102,13 @@ trait PathPatternOf[A]:
   def apply: PathPattern
 
 object PathPatternOf:
-  given PathPatternOf[Path.Root] with
-    def apply: PathPattern = PathPattern("/")
+  given PathPatternOf[EmptyTuple] with
+    def apply: PathPattern = PathPattern(List.empty)
+  given [A <: String: ValueOf, T <: Tuple: PathPatternOf]: PathPatternOf[A *: T]
+  with
+    def apply: PathPattern = PathPattern(
+      summon[ValueOf[A]].value :: summon[PathPatternOf[T]].apply.segments
+    )
 
 trait MethodOf[A]:
   def apply: Methods
@@ -119,9 +124,9 @@ object OperationOf:
   given OperationOf[Status.Ok] with
     def apply: Operation = Operation(Statuses.Ok)
 
-case class PathPattern(value: String)
+case class PathPattern(segments: List[String])
 object PathPattern:
-  given KeyEncoder[PathPattern] = _.value
+  given KeyEncoder[PathPattern] = _.segments.mkString("/", "/", "")
   given MatchesPattern[PathPattern] with
     def apply: Regex = "^/".r
 

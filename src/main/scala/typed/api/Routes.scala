@@ -7,6 +7,9 @@ import cats.data.OptionT
 import cats.*
 import cats.implicits.*
 import io.circe.syntax.*
+import io.circe.Encoder
+import org.http4s.EntityEncoder
+import org.http4s.circe.jsonEncoderOf
 
 type Route[F[_], Request, Status] = Request => F[Status]
 
@@ -15,15 +18,15 @@ object Method:
   type Get = Get.type
 
 case class Request[Method, Path](method: Method, path: Path)
+case class Response[Status, Entity](status: Status, entity: Entity)
+case class Json[A](value: A)
+object Json:
+  given jsonEntityEncoder[F[_], A: Encoder]: EntityEncoder[F, Json[A]] =
+    jsonEncoderOf[A].contramap[Json[A]](_.value)
 
 object Status:
   case object Ok
   type Ok = Ok.type
-
-type :/[L, R] = (L, R)
-object Path:
-  case object Root
-  type Root = Root.type
 
 object Routes:
   def fromApi[F[_]: Monad, Request: FromHttp4s, Response: ResponseOf](
@@ -57,22 +60,22 @@ object FromHttp4s:
         case r if r.method == http4s.Method.GET => OptionT.some(Method.Get)
         case _                                  => OptionT.none
       }
-  given FromHttp4s[Path.Root] with
-    def apply[F[_]: Monad]: Http4sKleisli[F, Path.Root] =
+  given FromHttp4s[EmptyTuple] with
+    def apply[F[_]: Monad]: Http4sKleisli[F, EmptyTuple] =
       Kleisli {
         case req if req.uri.path == http4s.Uri.Path.Root =>
-          OptionT.some(Path.Root)
+          OptionT.some(EmptyTuple)
         case _ => OptionT.none
       }
-  given [A <: String: ValueOf, T: FromHttp4s]: FromHttp4s[T :/ A] with
+  given [A <: String: ValueOf, T <: Tuple: FromHttp4s]: FromHttp4s[A *: T] with
     def apply[F[_]: Monad] =
       val a: A = summon[ValueOf[A]].value
       Kleisli { r =>
-        r.uri.path.segments.reverse.toList match {
+        r.uri.path.segments.toList match {
           case x :: xs if x == http4s.Uri.Path.Segment(a) =>
             summon[FromHttp4s[T]]
-              .apply(r.withPathInfo(http4s.Uri.Path(xs.toVector.reverse)))
-              .map((_, a))
+              .apply(r.withPathInfo(http4s.Uri.Path(xs.toVector)))
+              .map(a *: _)
           case _ => OptionT.none
         }
       }
@@ -81,6 +84,27 @@ trait ResponseOf[A]:
   def apply[F[_]](a: A): http4s.Response[F]
 
 object ResponseOf:
-  given ResponseOf[Status.Ok] with
-    def apply[F[_]](value: Status.Ok): http4s.Response[F] =
-      http4s.Response(status = http4s.Status.Ok)
+  given [Status: StatusOf, Entity: EntityOf]
+      : ResponseOf[Response[Status, Entity]] with
+    def apply[F[_]](value: Response[Status, Entity]): http4s.Response[F] =
+      value match {
+        case Response(status, entity) =>
+          http4s.Response(
+            status = summon[StatusOf[Status]].apply(status),
+            entity = summon[EntityOf[Entity]].apply(entity)
+          )
+      }
+
+trait StatusOf[A]:
+  def apply(a: A): http4s.Status
+
+object StatusOf:
+  given StatusOf[Status.Ok] with
+    def apply(value: Status.Ok): http4s.Status = http4s.Status.Ok
+
+trait EntityOf[A]:
+  def apply[F[_]](a: A): http4s.Entity[F]
+object EntityOf:
+  given [A: Encoder]: EntityOf[Json[A]] with
+    def apply[F[_]](value: Json[A]): http4s.Entity[F] =
+      http4s.EntityEncoder[F, Json[A]].toEntity(value)
