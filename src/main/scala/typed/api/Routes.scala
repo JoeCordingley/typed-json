@@ -11,7 +11,7 @@ import io.circe.Encoder
 import org.http4s.EntityEncoder
 import org.http4s.circe.jsonEncoderOf
 
-type Route[F[_], Request, Status] = Request => F[Status]
+type Route[F[_], Request, Response] = Request => F[Response]
 
 object Method:
   object Get
@@ -28,13 +28,30 @@ object Status:
   case object Ok
   type Ok = Ok.type
 
+trait ToRoutes[F[_], A]:
+  def apply(routes: A): http4s.HttpRoutes[F]
+
+object ToRoutes:
+  given [F[_]: Applicative]: ToRoutes[F, EmptyTuple] with
+    def apply(routes: EmptyTuple): http4s.HttpRoutes[F] =
+      http4s.HttpRoutes.empty
+
+  given [F[_]: Monad, Request: FromHttp4s, Response: ResponseOf, T <: Tuple](
+      using t: ToRoutes[F, T]
+  ): ToRoutes[F, Route[F, Request, Response] *: T] with
+    def apply(
+        routes: Route[F, Request, Response] *: T
+    ): http4s.HttpRoutes[F] = routes match {
+      case f *: xs =>
+        summon[FromHttp4s[Request]]
+          .apply[F]
+          .andThen(Kleisli(f).mapK(OptionT.liftK))
+          .map(summon[ResponseOf[Response]].apply[F]) <+> t.apply(xs)
+    }
+
 object Routes:
-  def fromApi[F[_]: Monad, Request: FromHttp4s, Response: ResponseOf](
-      route: Route[F, Request, Response]
-  ): HttpApp[F] = summon[FromHttp4s[Request]].apply
-    .andThen(Kleisli(route).mapK(OptionT.liftK))
-    .map(summon[ResponseOf[Response]].apply[F])
-    .orNotFound
+  def fromApi[F[_]: Applicative, A](routes: A)(using t: ToRoutes[F, A]) =
+    t.apply(routes).orNotFound
 
   def requestOf[F[_]: Monad, Method: FromHttp4s, Path: FromHttp4s](using
       m: FromHttp4s[Method],
@@ -47,6 +64,7 @@ type Http4sKleisli[F[_], A] =
 
 trait FromHttp4s[A]:
   def apply[F[_]: Monad]: Http4sKleisli[F, A]
+
 object FromHttp4s:
   given [Method, Path](using
       m: FromHttp4s[Method],

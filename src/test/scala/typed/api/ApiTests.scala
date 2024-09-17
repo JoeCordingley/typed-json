@@ -12,27 +12,29 @@ import org.http4s.implicits.*
 import io.circe
 
 object ApiTests extends TestSuite {
+  type RootApi =
+    Route[
+      IO,
+      Request[Method.Get, EmptyTuple],
+      Response[Status.Ok, Json[String]]
+    ]
+  val rootApi: RootApi = { case Request(Method.Get, EmptyTuple) =>
+    Response(status = Status.Ok, entity = Json("root")).pure[IO]
+  }
+  type PathApi =
+    Route[
+      IO,
+      Request[Method.Get, "some" *: "path" *: EmptyTuple],
+      Response[Status.Ok, Json[String]]
+    ]
+  val pathApi: PathApi = {
+    case Request(Method.Get, "some" *: "path" *: EmptyTuple) =>
+      Response(status = Status.Ok, entity = Json("path")).pure[IO]
+  }
+  type Api = (RootApi, PathApi)
+  val api: Api = (rootApi, pathApi)
 
   val tests = Tests {
-    type RootApi =
-      Route[
-        IO,
-        Request[Method.Get, EmptyTuple],
-        Response[Status.Ok, Json[String]]
-      ]
-    val rootApi: RootApi = { case Request(Method.Get, EmptyTuple) =>
-      Response(status = Status.Ok, entity = Json("root")).pure[IO]
-    }
-    type PathApi =
-      Route[
-        IO,
-        Request[Method.Get, "some" *: "path" *: EmptyTuple],
-        Response[Status.Ok, Json[String]]
-      ]
-    val pathApi: PathApi = {
-      case Request(Method.Get, "some" *: "path" *: EmptyTuple) =>
-        Response(status = Status.Ok, entity = Json("path")).pure[IO]
-    }
     def statusAndEntity(
         response: http4s.Response[IO]
     ): IO[(http4s.Status, circe.Json)] =
@@ -40,7 +42,7 @@ object ApiTests extends TestSuite {
     test("get root") {
       val (status, entity) =
         Routes
-          .fromApi(rootApi)
+          .fromApi(api)
           .apply(http4s.Request[IO]())
           .flatMap(statusAndEntity)
           .unsafeRunSync()
@@ -50,7 +52,7 @@ object ApiTests extends TestSuite {
     test("get path") {
       val (status, entity) =
         Routes
-          .fromApi(pathApi)
+          .fromApi(api)
           .apply(http4s.Request[IO](uri = uri"some/path"))
           .flatMap(statusAndEntity)
           .unsafeRunSync()
