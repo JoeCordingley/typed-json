@@ -4,6 +4,7 @@ import typed.json.{JsonObject, MatchesPattern}
 import scala.util.matching.Regex
 import io.circe.KeyEncoder
 import typed.api.OpenApiSchemaCodec.StatusCodePattern
+import typed.json.{SchemaOf, JsonSchema}
 
 type OpenApiSchemaCodec = JsonObject[
   (
@@ -71,12 +72,14 @@ object OpenApiSchemaCodec:
   }
 
   def operationCodec: typed.api.Operation => Operation = {
-    case Operation(Statuses.Ok) =>
+    case Operation(Statuses.Ok, description) =>
       JsonObject.Solo(
         Some(
           "responses" -> JsonObject(
             Map(
-              StatusCodePattern("200") -> JsonObject.Solo("description" -> "OK")
+              StatusCodePattern("200") -> JsonObject.Solo(
+                "description" -> "Ok"
+              )
             )
           )
         )
@@ -121,8 +124,31 @@ trait OperationOf[A]:
   def apply: Operation
 
 object OperationOf:
-  given OperationOf[Status.Ok] with
-    def apply: Operation = Operation(Statuses.Ok)
+  given [Status: StatusesOf, Content: ContentOf]
+      : OperationOf[Response[Status, Content]] with
+    def apply: Operation = Operation(
+      summon[StatusesOf[Status]].apply,
+      summon[ContentOf[Content]].apply
+    )
+
+trait StatusesOf[A]:
+  def apply: Statuses
+
+object StatusesOf:
+  given StatusesOf[Status.Ok] with
+    def apply: Statuses = Statuses.Ok
+
+trait ContentOf[A]:
+  def apply: Option[Content]
+
+object ContentOf:
+  given ContentOf[Empty] with
+    def apply: Option[Content] = None
+  given [A: SchemaOf]: ContentOf[Json[A]] with
+    def apply: Option[Content] = Some(Content.Json(summon[SchemaOf[A]].apply))
+
+enum Content:
+  case Json(schema: JsonSchema)
 
 case class PathPattern(segments: List[String])
 object PathPattern:
@@ -133,7 +159,7 @@ object PathPattern:
 case class OpenApiSchema(paths: Map[PathPattern, PathItem])
 case class Info(title: String, version: String)
 case class PathItem(method: Methods, operation: Operation)
-case class Operation(status: Statuses)
+case class Operation(status: Statuses, content: Option[Content])
 enum Statuses:
   case Ok
 enum Methods:

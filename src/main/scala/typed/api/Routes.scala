@@ -20,6 +20,9 @@ object Method:
 case class Request[Method, Path](method: Method, path: Path)
 case class Response[Status, Entity](status: Status, entity: Entity)
 case class Json[A](value: A)
+case object Empty
+type Empty = Empty.type
+
 object Json:
   given jsonEntityEncoder[F[_], A: Encoder]: EntityEncoder[F, Json[A]] =
     jsonEncoderOf[A].contramap[Json[A]](_.value)

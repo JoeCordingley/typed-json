@@ -10,7 +10,8 @@ object OpenApiTests extends TestSuite {
   val info = Info(title = "aTitle", version = "1")
   val tests = Tests {
     test("get root") {
-      type Api = Route[Id, Request[Method.Get, EmptyTuple], Status.Ok]
+      type Api =
+        Route[Id, Request[Method.Get, EmptyTuple], Response[Status.Ok, Empty]]
       val expectedSchema = json"""
         {
           "openapi": "3.1.0",
@@ -35,7 +36,11 @@ object OpenApiTests extends TestSuite {
       assert(actual == expectedSchema)
     }
     test("get path") {
-      type Api = Route[Id, Request[Method.Get, "path" *: EmptyTuple], Status.Ok]
+      type Api = Route[
+        Id,
+        Request[Method.Get, "path" *: EmptyTuple],
+        Response[Status.Ok, Empty]
+      ]
       val expectedSchema = json"""
         {
           "openapi": "3.1.0",
