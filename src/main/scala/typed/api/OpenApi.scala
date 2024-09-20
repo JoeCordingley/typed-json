@@ -145,10 +145,10 @@ object ContentOf:
   given ContentOf[Empty] with
     def apply: Option[Content] = None
   given [A: SchemaOf]: ContentOf[Json[A]] with
-    def apply: Option[Content] = Some(Content.Json(summon[SchemaOf[A]].apply))
+    def apply: Option[Content] = Some(Content.Json(JsonSchemaCodec.of[A]))
 
 enum Content:
-  case Json(schema: JsonSchema)
+  case Json(schema: JsonSchemaCodec)
 
 case class PathPattern(segments: List[String])
 object PathPattern:
