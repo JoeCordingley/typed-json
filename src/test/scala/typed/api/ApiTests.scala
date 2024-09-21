@@ -16,7 +16,7 @@ object ApiTests extends TestSuite {
     Route[
       IO,
       Request[Method.Get, EmptyTuple],
-      Response[Status.Ok, Json[String]]
+      Response[Status.Ok, "Ok", Json[String]]
     ]
   val rootApi: RootApi = { case Request(Method.Get, EmptyTuple) =>
     Response(status = Status.Ok, entity = Json("root")).pure[IO]
@@ -25,7 +25,7 @@ object ApiTests extends TestSuite {
     Route[
       IO,
       Request[Method.Get, "some" *: "path" *: EmptyTuple],
-      Response[Status.Ok, Json[String]]
+      Response[Status.Ok, "Ok", Json[String]]
     ]
   val pathApi: PathApi = {
     case Request(Method.Get, "some" *: "path" *: EmptyTuple) =>

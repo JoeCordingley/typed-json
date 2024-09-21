@@ -16,9 +16,11 @@ type Route[F[_], Request, Response] = Request => F[Response]
 object Method:
   object Get
   type Get = Get.type
+  object Put
+  type Put = Put.type
 
 case class Request[Method, Path](method: Method, path: Path)
-case class Response[Status, Entity](status: Status, entity: Entity)
+case class Response[Status, Description, Entity](status: Status, entity: Entity)
 case class Json[A](value: A)
 case object Empty
 type Empty = Empty.type
@@ -105,9 +107,11 @@ trait ResponseOf[A]:
   def apply[F[_]](a: A): http4s.Response[F]
 
 object ResponseOf:
-  given [Status: StatusOf, Entity: EntityOf]
-      : ResponseOf[Response[Status, Entity]] with
-    def apply[F[_]](value: Response[Status, Entity]): http4s.Response[F] =
+  given [Status: StatusOf, Entity: EntityOf, Description]
+      : ResponseOf[Response[Status, Description, Entity]] with
+    def apply[F[_]](
+        value: Response[Status, Description, Entity]
+    ): http4s.Response[F] =
       value match {
         case Response(status, entity) =>
           http4s.Response(
