@@ -85,6 +85,8 @@ trait JsonMembersEncoder[A]:
   def encode(a: A): List[(String, Json)]
 
 given KeyEncoder[Regex] = _.toString
+given [A <: String: ValueOf]: KeyEncoder[A] with
+  def apply(key: A): String = summon[ValueOf[A]].value
 object JsonMembersEncoder:
   given JsonMembersEncoder[EmptyTuple] = _ => List.empty
   given nonOpt[K: JsonFieldCodec, V, T <: Tuple: JsonMembersEncoder](using

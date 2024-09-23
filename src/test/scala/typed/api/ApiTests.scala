@@ -12,27 +12,31 @@ import org.http4s.implicits.*
 import io.circe
 
 object ApiTests extends TestSuite {
+
   type RootApi =
-    Route[
-      IO,
-      Request[Method.Get, EmptyTuple],
-      Response[Status.Ok, "Ok", Json[String]]
-    ]
-  val rootApi: RootApi = { case Request(Method.Get, EmptyTuple) =>
-    Response(status = Status.Ok, entity = Json("root")).pure[IO]
+    EmptyTuple => (Method.Get, IO[Response[Status.Ok, "Ok", Json[String]]]) *:
+      EmptyTuple
+
+  val rootApi: RootApi = { case EmptyTuple =>
+    (
+      Method.Get,
+      Response(status = Status.Ok, entity = Json("root")).pure[IO]
+    ) *: EmptyTuple
   }
+
   type PathApi =
-    Route[
-      IO,
-      Request[Method.Get, "some" *: "path" *: EmptyTuple],
-      Response[Status.Ok, "Ok", Json[String]]
-    ]
-  val pathApi: PathApi = {
-    case Request(Method.Get, "some" *: "path" *: EmptyTuple) =>
+    "some" *: "path" *: EmptyTuple => (
+        Method.Get,
+        IO[Response[Status.Ok, "Ok", Json[String]]]
+    ) *: EmptyTuple
+  val pathApi: PathApi = { case "some" *: "path" *: EmptyTuple =>
+    (
+      Method.Get,
       Response(status = Status.Ok, entity = Json("path")).pure[IO]
+    ) *: EmptyTuple
   }
-  type Api = (RootApi, PathApi)
-  val api: Api = (rootApi, pathApi)
+//  type Api = (RootApi, PathApi)
+//  val api: Api = (rootApi, pathApi)
 
   val tests = Tests {
     def statusAndEntity(
@@ -42,7 +46,7 @@ object ApiTests extends TestSuite {
     test("get root") {
       val (status, entity) =
         Routes
-          .fromApi(api)
+          .fromApi(rootApi *: EmptyTuple)
           .apply(http4s.Request[IO]())
           .flatMap(statusAndEntity)
           .unsafeRunSync()
@@ -52,7 +56,7 @@ object ApiTests extends TestSuite {
     test("get path") {
       val (status, entity) =
         Routes
-          .fromApi(api)
+          .fromApi(pathApi *: EmptyTuple)
           .apply(http4s.Request[IO](uri = uri"some/path"))
           .flatMap(statusAndEntity)
           .unsafeRunSync()

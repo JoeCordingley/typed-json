@@ -5,6 +5,7 @@ import scala.util.matching.Regex
 import io.circe.KeyEncoder
 import typed.api.OpenApiSchemaCodec.StatusCodePattern
 import typed.json.{SchemaOf, JsonSchema}
+import cats.syntax.all.*
 
 type OpenApiSchemaCodec = JsonObject[
   (
@@ -20,7 +21,7 @@ type OpenApiSchemaCodec = JsonObject[
 ]
 object OpenApiSchemaCodec:
   type Paths = JsonObject[
-    Map[PathPattern, OpenApiSchemaCodec.PathItem]
+    Map[PathPattern, PathItem]
   ]
   type Info = JsonObject[
     (
@@ -33,8 +34,10 @@ object OpenApiSchemaCodec:
     Option[("get", Operation)]
   ]
   object PathItem:
-    def get(operation: Operation): PathItem =
-      JsonObject.Solo(Some("get" -> operation))
+    def setGet(operation: Operation): PathItem => PathItem = {
+      case JsonObject((_)) => JsonObject.Solo(Some("get" -> operation))
+    }
+    def empty: PathItem = JsonObject.Solo(None)
   type Operation = JsonObject.Solo[
     Option[("responses", Responses)]
   ]
@@ -61,16 +64,21 @@ object OpenApiSchemaCodec:
     fromOpenApiSchema(infoCodec(info), pathsCodec(schema.apply))
 
   def pathsCodec(schema: OpenApiSchema): Paths = JsonObject(schema.map {
-    case (path, typed.api.PathItem(method, operation)) =>
-      path -> pathItemCodec(method, operationCodec(operation))
+    case (path, pathItem) =>
+      path -> pathItemCodec(pathItem)
   })
+  def pathItemCodec(m: Map[Methods, typed.api.Operation]): PathItem =
+    m.toList.foldRight(PathItem.empty) { case ((Methods.Get, operation), p) =>
+      PathItem.setGet(operationCodec(operation))(p)
+    }
+
   def infoCodec: typed.api.Info => Info = {
     case typed.api.Info(title, version) =>
       JsonObject("title" -> title, "version" -> version)
   }
-  def pathItemCodec: (Methods, Operation) => PathItem = {
-    case (Methods.Get, operation) => PathItem.get(operation)
-  }
+//  def pathItemCodec: (Methods, Operation) => PathItem = {
+//    case (Methods.Get, operation) => PathItem.get(operation)
+//  }
 
   def operationCodec: typed.api.Operation => Operation = {
     case Operation(statusCodePattern, description, _) =>
@@ -90,20 +98,47 @@ object OpenApiSchemaCodec:
 trait OpenApiSchemaOf[A]:
   def apply: OpenApiSchema
 
+//object OpenApiSchemaOf:
+//  given OpenApiSchemaOf[EmptyTuple] with
+//    def apply: OpenApiSchema = Map.empty
+//  given [F[
+//      _
+//  ], Method: MethodOf, Path: PathPatternOf, Response: OperationOf, T <: Tuple: OpenApiSchemaOf]
+//      : OpenApiSchemaOf[Route[F, Request[Method, Path], Response] *: T] with
+//    def apply: OpenApiSchema =
+//      summon[OpenApiSchemaOf[T]].apply + (
+//        summon[PathPatternOf[Path]].apply -> PathItem(
+//          summon[MethodOf[Method]].apply,
+//          summon[OperationOf[Response]].apply
+//        )
+//      )
+
 object OpenApiSchemaOf:
   given OpenApiSchemaOf[EmptyTuple] with
     def apply: OpenApiSchema = Map.empty
-  given [F[
-      _
-  ], Method: MethodOf, Path: PathPatternOf, Response: OperationOf, T <: Tuple: OpenApiSchemaOf]
-      : OpenApiSchemaOf[Route[F, Request[Method, Path], Response] *: T] with
+  given [
+      Method: MethodOf,
+      Path: PathPatternOf,
+      PathItem: PathItemOf,
+      T <: Tuple: OpenApiSchemaOf
+  ]: OpenApiSchemaOf[(Path => PathItem) *: T] with
     def apply: OpenApiSchema =
       summon[OpenApiSchemaOf[T]].apply + (
-        summon[PathPatternOf[Path]].apply -> PathItem(
-          summon[MethodOf[Method]].apply,
-          summon[OperationOf[Response]].apply
-        )
+        summon[PathPatternOf[Path]].apply -> summon[PathItemOf[PathItem]].apply
       )
+
+trait PathItemOf[A]:
+  def apply: Map[Methods, Operation]
+
+object PathItemOf:
+  given PathItemOf[EmptyTuple] with
+    def apply: Map[Methods, Operation] = Map.empty
+
+  given [Method: MethodOf, O: OperationOf, T <: Tuple: PathItemOf]
+      : PathItemOf[(Method, O) *: T] with
+    def apply: Map[Methods, Operation] = summon[PathItemOf[T]].apply + (summon[
+      MethodOf[Method]
+    ].apply -> summon[OperationOf[O]].apply)
 
 trait PathPatternOf[A]:
   def apply: PathPattern
@@ -164,9 +199,8 @@ object PathPattern:
   given MatchesPattern[PathPattern] with
     def apply: Regex = "^/".r
 
-type OpenApiSchema = Map[PathPattern, PathItem]
+type OpenApiSchema = Map[PathPattern, Map[Methods, Operation]]
 case class Info(title: String, version: String)
-case class PathItem(method: Methods, operation: Operation)
 case class Operation(
     status: StatusCodePattern,
     description: String,
