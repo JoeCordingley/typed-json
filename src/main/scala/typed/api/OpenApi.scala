@@ -134,8 +134,8 @@ object PathItemOf:
   given PathItemOf[EmptyTuple] with
     def apply: Map[Methods, Operation] = Map.empty
 
-  given [Method: MethodOf, O: OperationOf, T <: Tuple: PathItemOf]
-      : PathItemOf[(Method, O) *: T] with
+  given [F[_], Method: MethodOf, O: OperationOf, T <: Tuple: PathItemOf]
+      : PathItemOf[(Method, F[O]) *: T] with
     def apply: Map[Methods, Operation] = summon[PathItemOf[T]].apply + (summon[
       MethodOf[Method]
     ].apply -> summon[OperationOf[O]].apply)

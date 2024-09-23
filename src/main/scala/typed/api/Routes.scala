@@ -104,20 +104,18 @@ object PathItemsOf:
         http4sMethod: http4s.Method,
         p: (Method, F[Response]) *: T
     ): OptionT[F, http4s.Response[F]] = p match {
-      case (method, response) *: _
-          if summon[MatchesHttp4sMethod[Method]].apply(method, http4sMethod) =>
+      case (_, response) *: _
+          if summon[MatchesHttp4sMethod[Method]].apply(http4sMethod) =>
         OptionT.liftF(response.map(rs.apply))
       case _ *: t => ps.apply(http4sMethod, t)
     }
 
 trait MatchesHttp4sMethod[A]:
-  def apply(value: A, method: http4s.Method): Boolean
+  def apply(method: http4s.Method): Boolean
 
 object MatchesHttp4sMethod:
-  given MatchesHttp4sMethod[Method.Get] = {
-    case (Method.Get, http4s.Method.GET) => true
-    case _                               => false
-  }
+  given MatchesHttp4sMethod[Method.Get] = _ == http4s.Method.GET
+  given MatchesHttp4sMethod[Method.Put] = _ == http4s.Method.PUT
 object Routes:
   def fromApi[F[_]: Applicative, A](routes: A)(using t: ToRoutes[F, A]) =
     t.apply(routes).orNotFound
