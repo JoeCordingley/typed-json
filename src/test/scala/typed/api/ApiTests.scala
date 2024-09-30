@@ -40,9 +40,22 @@ object ApiTests extends TestSuite {
   type Api = (RootApi, PathApi)
   val api: Api = (rootApi, pathApi)
 
+  type PathParamApi =
+    (
+        "path" *: PathParam["param"] *: EmptyTuple => (
+            Method.Get,
+            IO[Response[Status.Ok, "Ok", Json[String]]]
+        ) *: EmptyTuple
+    ) *: EmptyTuple
+
+  val pathParamApi: PathParamApi = {
+    case "path" *: PathParam(path) *: EmptyTuple =>
+      (Method.Get, Response(status = Status.Ok, entity = Json(path)).pure[IO])
+        *: EmptyTuple
+  } *: EmptyTuple
+
   val tests = Tests {
     test("get root") {
-
       val t = for {
         response <- Routes
           .fromApi(api)
@@ -75,6 +88,20 @@ object ApiTests extends TestSuite {
         entity <- response.as[circe.Json]
       } yield {
         entity ==> circe.Json.fromString("put root")
+      }
+      t.unsafeRunSync()
+    }
+    test("path param") {
+      val t = for {
+        response <- Routes
+          .fromApi(pathParamApi)
+          .apply(
+            http4s.Request[IO](method = http4s.Method.GET, uri = uri"path/test")
+          )
+        _ = assert(response.status == http4s.Status.Ok)
+        entity <- response.as[circe.Json]
+      } yield {
+        entity ==> circe.Json.fromString("test")
       }
       t.unsafeRunSync()
     }

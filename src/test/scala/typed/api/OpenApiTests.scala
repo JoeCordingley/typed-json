@@ -17,6 +17,9 @@ object OpenApiTests extends TestSuite {
         Method.Get,
         IO[Response[Status.Ok, "OK", Json[String]]]
     ) *: EmptyTuple
+  type RootOrPutApi =
+    EmptyTuple => (Method.Get, IO[Response[Status.Ok, "Ok", Json[String]]]) *:
+      (Method.Put, IO[Response[Status.Ok, "Ok", Json[String]]]) *: EmptyTuple
 //  type PathApi =
 //    Route[
 //      Id,
@@ -118,12 +121,6 @@ object OpenApiTests extends TestSuite {
     }
     test("get or put") {
 
-      type RootOrPutApi =
-        EmptyTuple => (
-            (Method.Get, IO[Response[Status.Ok, "Ok", Json[String]]]),
-            (Method.Put, IO[Response[Status.Ok, "Ok", Json[String]]])
-        )
-
       val expectedSchema = json"""
         {
           "openapi": "3.1.0",
@@ -146,12 +143,13 @@ object OpenApiTests extends TestSuite {
                     "description": "Ok"
                   }
                 }
-              },
+              }
             }
           }
         }
       """
-      val actual = OpenApiSchemaCodec.of[RootOrPutApi](info).asJson
+      val actual =
+        OpenApiSchemaCodec.of[RootOrPutApi *: EmptyTuple](info).asJson
       assert(actual == expectedSchema)
     }
   }

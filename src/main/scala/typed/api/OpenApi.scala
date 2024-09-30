@@ -30,14 +30,9 @@ object OpenApiSchemaCodec:
     )
   ]
 
-  type PathItem = JsonObject.Solo[
-    Option[("get", Operation)]
+  type PathItem = JsonObject[
+    (Option[("get", Operation)], Option[("put", Operation)])
   ]
-  object PathItem:
-    def setGet(operation: Operation): PathItem => PathItem = {
-      case JsonObject((_)) => JsonObject.Solo(Some("get" -> operation))
-    }
-    def empty: PathItem = JsonObject.Solo(None)
   type Operation = JsonObject.Solo[
     Option[("responses", Responses)]
   ]
@@ -67,20 +62,15 @@ object OpenApiSchemaCodec:
     case (path, pathItem) =>
       path -> pathItemCodec(pathItem)
   })
-  def pathItemCodec(m: typed.api.PathItem): PathItem = JsonObject.Solo(
-    m.get.map(operation => "get" -> operationCodec(operation))
+  def pathItemCodec(m: typed.api.PathItem): PathItem = JsonObject(
+    m.get.map(operation => "get" -> operationCodec(operation)),
+    m.put.map(operation => "put" -> operationCodec(operation))
   )
-//  m.toList.foldRight(PathItem.empty) { case ((Methods.Get, operation), p) =>
-//    PathItem.setGet(operationCodec(operation))(p)
-//  }
 
   def infoCodec: typed.api.Info => Info = {
     case typed.api.Info(title, version) =>
       JsonObject("title" -> title, "version" -> version)
   }
-//  def pathItemCodec: (Methods, Operation) => PathItem = {
-//    case (Methods.Get, operation) => PathItem.get(operation)
-//  }
 
   def operationCodec: typed.api.Operation => Operation = {
     case Operation(statusCodePattern, description, _) =>
@@ -119,7 +109,6 @@ object OpenApiSchemaOf:
   given OpenApiSchemaOf[EmptyTuple] with
     def apply: OpenApiSchema = Map.empty
   given [
-      Method: MethodOf,
       Path: PathPatternOf,
       PathItem: PathItemOf,
       T <: Tuple: OpenApiSchemaOf
@@ -138,16 +127,14 @@ object PathItemOf:
 
   given [F[_], Method: MethodOf, O: OperationOf, T <: Tuple: PathItemOf]
       : PathItemOf[(Method, F[O]) *: T] with
-    def apply: PathItem = summon[
-      MethodOf[Method]
-    ].apply match {
-      case Methods.Get =>
-        summon[PathItemOf[T]].apply
-          .copy(get = Some(summon[OperationOf[O]].apply))
-      case Methods.Put =>
-        summon[PathItemOf[T]].apply
-          .copy(put = Some(summon[OperationOf[O]].apply))
-    }
+    def apply: PathItem = {
+      summon[
+        MethodOf[Method]
+      ].apply match {
+        case Methods.Get => PathItem.setGet
+        case Methods.Put => PathItem.setPut
+      }
+    }.apply(summon[OperationOf[O]].apply, summon[PathItemOf[T]].apply)
 
 trait PathPatternOf[A]:
   def apply: PathPattern
@@ -214,6 +201,10 @@ type OpenApiSchema = Map[PathPattern, PathItem]
 case class PathItem(get: Option[Operation], put: Option[Operation])
 object PathItem:
   def empty: PathItem = PathItem(None, None)
+  def setGet(operation: Operation, pathItem: PathItem): PathItem =
+    pathItem.copy(get = Some(operation))
+  def setPut(operation: Operation, pathItem: PathItem): PathItem =
+    pathItem.copy(put = Some(operation))
 case class Info(title: String, version: String)
 case class Operation(
     status: StatusCodePattern,
