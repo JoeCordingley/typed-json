@@ -32,12 +32,12 @@ object ApiTests extends TestSuite {
     "some" *: "path" *: EmptyTuple => (
         Method.Get,
         IO[Response[Status.Ok, "Ok", Json[String]]]
-    )
+    ) *: EmptyTuple
   val pathApi: PathApi = { case ("some", "path") =>
     (
       Method.Get,
       Response(status = Status.Ok, entity = Json("path")).pure[IO]
-    )
+    ) *: EmptyTuple
   }
   type Api = (RootApi, PathApi)
   val api: Api = (rootApi, pathApi)
@@ -47,13 +47,13 @@ object ApiTests extends TestSuite {
         "path" *: PathParam["param"] *: EmptyTuple => (
             Method.Get,
             IO[Response[Status.Ok, "Ok", Json[String]]]
-        )
+        ) *: EmptyTuple
     ) *: EmptyTuple
 
   val pathParamApi: PathParamApi = {
     case "path" *: PathParam(path) *: EmptyTuple =>
       (Method.Get, Response(status = Status.Ok, entity = Json(path)).pure[IO])
-
+        *: EmptyTuple
   } *: EmptyTuple
 
   val tests = Tests {

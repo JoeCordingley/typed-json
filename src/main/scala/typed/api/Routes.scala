@@ -92,27 +92,18 @@ object PathItemsOf:
   given [F[_]: Applicative]: PathItemsOf[F, EmptyTuple] = { case _ =>
     OptionT.none
   }
-  given [F[_]: Applicative, Method: MatchesHttp4sMethod, Response](using
+  given [F[_]: Functor, Method: MatchesHttp4sMethod, Response, T <: Tuple](using
+      ps: PathItemsOf[F, T],
       rs: ResponseOf[F, Response]
-  ): PathItemsOf[F, (Method, F[Response])] with
+  ): PathItemsOf[F, (Method, F[Response]) *: T] with
     def apply(
         http4sMethod: http4s.Method,
-        p: (Method, F[Response])
+        p: (Method, F[Response]) *: T
     ): OptionT[F, http4s.Response[F]] = p match {
-      case (_, response)
+      case (_, response) *: _
           if summon[MatchesHttp4sMethod[Method]].apply(http4sMethod) =>
         OptionT.liftF(response.map(rs.apply))
-      case _ => OptionT.none
-    }
-  given [F[_]: Monad, A, T <: Tuple](using
-      pa: PathItemsOf[F, A],
-      pt: PathItemsOf[F, T]
-  ): PathItemsOf[F, A *: T] with
-    def apply(
-        http4sMethod: http4s.Method,
-        p: A *: T
-    ): OptionT[F, http4s.Response[F]] = p match {
-      case a *: t => pa.apply(http4sMethod, a).orElse(pt.apply(http4sMethod, t))
+      case _ *: t => ps.apply(http4sMethod, t)
     }
 
 trait MatchesHttp4sMethod[A]:
