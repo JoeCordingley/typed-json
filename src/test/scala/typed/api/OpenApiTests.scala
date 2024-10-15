@@ -5,6 +5,7 @@ import io.circe.literal.*
 import cats.Id
 import io.circe.syntax.*
 import cats.effect.IO
+import typed.api.ApiTests.*
 
 object OpenApiTests extends TestSuite {
 
@@ -17,25 +18,6 @@ object OpenApiTests extends TestSuite {
         Method.Get,
         IO[Response[Status.Ok, "OK", Json[String]]]
     ) *: EmptyTuple
-  type RootOrPutApi =
-    EmptyTuple => (Method.Get, IO[Response[Status.Ok, "Ok", Json[String]]]) *:
-      (Method.Put, IO[Response[Status.Ok, "Ok", Json[String]]]) *: EmptyTuple
-//  type PathApi =
-//    Route[
-//      Id,
-//      Request[Method.Get, "some" *: "path" *: EmptyTuple],
-//      Response[Status.Ok, "OK", Empty]
-//    ]
-//
-//  type GetOrPut = (RootApi, PathApi)
-//    Route[
-//      Id,
-//      EmptyTuple,
-//      (
-//          (Method.Get, Response[Status.Ok, "Ok", Empty]),
-//          (Method.Put, Response[Status.Ok, "Ok", Empty])
-//      )
-//    ]
   type RootOrPathApi = (RootApi, PathApi)
   val tests = Tests {
     test("get root") {
@@ -149,7 +131,41 @@ object OpenApiTests extends TestSuite {
         }
       """
       val actual =
-        OpenApiSchemaCodec.of[RootOrPutApi *: EmptyTuple](info).asJson
+        OpenApiSchemaCodec.of[GetOrPutApi *: EmptyTuple](info).asJson
+      assert(actual == expectedSchema)
+    }
+    test("path parameter") {
+
+      val expectedSchema = json"""
+        {
+          "openapi": "3.1.0",
+          "info": {
+            "title": "aTitle",
+            "version": "1"
+          },
+          "paths": {
+            "/path/{param}": {
+              "parameters": [
+                {
+                  "name": "param",
+                  "in": "path",
+                  "required": true,
+                  "schema": "string"
+                }
+              ],
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "Ok"
+                  }
+                }
+              }
+            }
+          }
+        }
+      """
+      val actual =
+        OpenApiSchemaCodec.of[PathParamApi](info).asJson
       assert(actual == expectedSchema)
     }
   }

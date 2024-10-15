@@ -13,13 +13,13 @@ import io.circe
 
 object ApiTests extends TestSuite {
 
-  type RootApi =
+  type GetOrPutApi =
     EmptyTuple => (
         (Method.Get, IO[Response[Status.Ok, "Ok", Json[String]]]),
         (Method.Put, IO[Response[Status.Ok, "Ok", Json[String]]])
     )
 
-  val rootApi: RootApi = { case EmptyTuple =>
+  val getOrPutApi: GetOrPutApi = { case EmptyTuple =>
     (
       Method.Get -> Response(status = Status.Ok, entity = Json("get root"))
         .pure[IO],
@@ -39,8 +39,8 @@ object ApiTests extends TestSuite {
       Response(status = Status.Ok, entity = Json("path")).pure[IO]
     ) *: EmptyTuple
   }
-  type Api = (RootApi, PathApi)
-  val api: Api = (rootApi, pathApi)
+  type Api = (GetOrPutApi, PathApi)
+  val api: Api = (getOrPutApi, pathApi)
 
   type PathParamApi =
     (

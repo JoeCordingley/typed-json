@@ -90,21 +90,6 @@ object OpenApiSchemaCodec:
 trait OpenApiSchemaOf[A]:
   def apply: OpenApiSchema
 
-//object OpenApiSchemaOf:
-//  given OpenApiSchemaOf[EmptyTuple] with
-//    def apply: OpenApiSchema = Map.empty
-//  given [F[
-//      _
-//  ], Method: MethodOf, Path: PathPatternOf, Response: OperationOf, T <: Tuple: OpenApiSchemaOf]
-//      : OpenApiSchemaOf[Route[F, Request[Method, Path], Response] *: T] with
-//    def apply: OpenApiSchema =
-//      summon[OpenApiSchemaOf[T]].apply + (
-//        summon[PathPatternOf[Path]].apply -> PathItem(
-//          summon[MethodOf[Method]].apply,
-//          summon[OperationOf[Response]].apply
-//        )
-//      )
-
 object OpenApiSchemaOf:
   given OpenApiSchemaOf[EmptyTuple] with
     def apply: OpenApiSchema = Map.empty
@@ -142,8 +127,13 @@ trait PathPatternOf[A]:
 object PathPatternOf:
   given PathPatternOf[EmptyTuple] with
     def apply: PathPattern = PathPattern(List.empty)
-  given [A <: String: ValueOf, T <: Tuple: PathPatternOf]: PathPatternOf[A *: T]
-  with
+  given fixedPath[A <: String: ValueOf, T <: Tuple: PathPatternOf]
+      : PathPatternOf[A *: T] with
+    def apply: PathPattern = PathPattern(
+      summon[ValueOf[A]].value :: summon[PathPatternOf[T]].apply.segments
+    )
+  given pathParam[A <: String: ValueOf, T <: Tuple: PathPatternOf]
+      : PathPatternOf[PathParam[A] *: T] with
     def apply: PathPattern = PathPattern(
       summon[ValueOf[A]].value :: summon[PathPatternOf[T]].apply.segments
     )
