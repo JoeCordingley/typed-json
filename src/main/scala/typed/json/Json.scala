@@ -8,7 +8,7 @@ import scala.util.matching.Regex
 
 case class Fix[F[_]](unfix: F[Fix[F]])
 object Fix:
-  given [F[_]](using e: => Encoder[F[Fix[F]]]): Encoder[Fix[F]] =
+  given encoder[F[_]](using e: => Encoder[F[Fix[F]]]): Encoder[Fix[F]] =
     e.contramap(_.unfix)
   given [F[_]](using d: => Decoder[F[Fix[F]]]): Decoder[Fix[F]] = d.map(Fix(_))
 
@@ -62,7 +62,7 @@ object JsonFieldCodec:
 case class JsonObject[A](pairs: A)
 
 object JsonObject:
-  given [A: JsonMembersEncoder]: Encoder[JsonObject[A]] = a =>
+  given encoder[A: JsonMembersEncoder]: Encoder[JsonObject[A]] = a =>
     Json.fromFields(summon[JsonMembersEncoder[A]].encode(a.pairs))
   given Decoder[JsonObject[EmptyTuple]] =
     Decoder[circe.JsonObject].as(JsonObject(EmptyTuple))

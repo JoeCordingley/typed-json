@@ -1,11 +1,13 @@
 package typed.api
 
 import typed.json.{JsonObject, MatchesPattern, JsonSchemaCodec}
+import typed.json.given
 import scala.util.matching.Regex
 import io.circe.KeyEncoder
 import typed.api.OpenApiSchemaCodec.StatusCodePattern
-import typed.json.{SchemaOf, JsonSchema}
+import typed.json.*
 import cats.syntax.all.*
+import io.circe.Encoder
 
 type OpenApiSchemaCodec = JsonObject[
   (
@@ -20,6 +22,8 @@ type OpenApiSchemaCodec = JsonObject[
   )
 ]
 object OpenApiSchemaCodec:
+  given encoder: Encoder[OpenApiSchemaCodec] = JsonObject.encoder
+
   type Paths = JsonObject[
     Map[PathPattern, PathItem]
   ]
@@ -31,7 +35,19 @@ object OpenApiSchemaCodec:
   ]
 
   type PathItem = JsonObject[
-    (Option[("get", Operation)], Option[("put", Operation)])
+    (
+        Option[("get", Operation)],
+        Option[("put", Operation)],
+        Option[("parameters", JsonArray[List[Parameter]])]
+    )
+  ]
+  type Parameter = JsonObject[
+    (
+        ("name", String),
+        ("in", "path"),
+        ("required", Boolean),
+        ("schema", JsonSchemaCodec)
+    )
   ]
   type Operation = JsonObject.Solo[
     Option[("responses", Responses)]
@@ -64,8 +80,20 @@ object OpenApiSchemaCodec:
   })
   def pathItemCodec(m: typed.api.PathItem): PathItem = JsonObject(
     m.get.map(operation => "get" -> operationCodec(operation)),
-    m.put.map(operation => "put" -> operationCodec(operation))
+    m.put.map(operation => "put" -> operationCodec(operation)),
+    m.parameters.map(parameters =>
+      "parameters" -> JsonArray(parameters.map(parameterCodec))
+    )
   )
+  def parameterCodec(parameter: typed.api.Parameter): Parameter =
+    JsonObject(
+      (
+        "name" -> parameter.name,
+        "in" -> "path",
+        "required" -> true,
+        "schema" -> JsonSchemaCodec.noMetaSchema[String]
+      )
+    )
 
   def infoCodec: typed.api.Info => Info = {
     case typed.api.Info(title, version) =>
@@ -94,32 +122,52 @@ object OpenApiSchemaOf:
   given OpenApiSchemaOf[EmptyTuple] with
     def apply: OpenApiSchema = Map.empty
   given [
-      Path: PathPatternOf,
+      Path: PathPatternOf: ParametersOf,
       PathItem: PathItemOf,
       T <: Tuple: OpenApiSchemaOf
   ]: OpenApiSchemaOf[(Path => PathItem) *: T] with
     def apply: OpenApiSchema =
       summon[OpenApiSchemaOf[T]].apply + (
-        summon[PathPatternOf[Path]].apply -> summon[PathItemOf[PathItem]].apply
+        summon[PathPatternOf[Path]].apply -> summon[PathItemOf[PathItem]].apply(
+          summon[ParametersOf[Path]].apply
+        )
       )
 
+trait ParametersOf[A]:
+  def apply: List[Parameter]
+object ParametersOf:
+  given ParametersOf[EmptyTuple] with
+    def apply: List[Parameter] = List.empty
+  given staticParameter[A <: String: ValueOf, T <: Tuple: ParametersOf]
+      : ParametersOf[A *: T] with
+    def apply: List[Parameter] =
+      summon[ParametersOf[T]].apply
+  given dynamicParameter[A <: String: ValueOf, T <: Tuple: ParametersOf]
+      : ParametersOf[PathParam[A] *: T] with
+    def apply: List[Parameter] =
+      Parameter(summon[ValueOf[A]].value) :: summon[ParametersOf[T]].apply
+
 trait PathItemOf[A]:
-  def apply: PathItem
+  def apply: List[Parameter] => PathItem
 
 object PathItemOf:
   given PathItemOf[EmptyTuple] with
-    def apply: PathItem = PathItem.empty
+    def apply: List[Parameter] => PathItem = PathItem.withParameters
 
   given [F[_], Method: MethodOf, O: OperationOf, T <: Tuple: PathItemOf]
       : PathItemOf[(Method, F[O]) *: T] with
-    def apply: PathItem = {
-      summon[
-        MethodOf[Method]
-      ].apply match {
-        case Methods.Get => PathItem.setGet
-        case Methods.Put => PathItem.setPut
-      }
-    }.apply(summon[OperationOf[O]].apply, summon[PathItemOf[T]].apply)
+    def apply: List[Parameter] => PathItem = parameters =>
+      {
+        summon[
+          MethodOf[Method]
+        ].apply match {
+          case Methods.Get => PathItem.setGet
+          case Methods.Put => PathItem.setPut
+        }
+      }.apply(
+        summon[OperationOf[O]].apply,
+        summon[PathItemOf[T]].apply(parameters)
+      )
 
 trait PathPatternOf[A]:
   def apply: PathPattern
@@ -135,7 +183,9 @@ object PathPatternOf:
   given pathParam[A <: String: ValueOf, T <: Tuple: PathPatternOf]
       : PathPatternOf[PathParam[A] *: T] with
     def apply: PathPattern = PathPattern(
-      summon[ValueOf[A]].value :: summon[PathPatternOf[T]].apply.segments
+      s"{${summon[ValueOf[A]].value}}" :: summon[
+        PathPatternOf[T]
+      ].apply.segments
     )
 
 trait MethodOf[A]:
@@ -176,7 +226,9 @@ object ContentOf:
   given ContentOf[Empty] with
     def apply: Option[Content] = None
   given [A: SchemaOf]: ContentOf[Json[A]] with
-    def apply: Option[Content] = Some(Content.Json(JsonSchemaCodec.of[A]))
+    def apply: Option[Content] = Some(
+      Content.Json(JsonSchemaCodec.withDefaultMetaSchema[A])
+    )
 
 enum Content:
   case Json(schema: JsonSchemaCodec)
@@ -188,9 +240,16 @@ object PathPattern:
     def apply: Regex = "^/".r
 
 type OpenApiSchema = Map[PathPattern, PathItem]
-case class PathItem(get: Option[Operation], put: Option[Operation])
+case class PathItem(
+    get: Option[Operation] = None,
+    put: Option[Operation] = None,
+    parameters: Option[List[Parameter]]
+)
+case class Parameter(name: String)
 object PathItem:
-  def empty: PathItem = PathItem(None, None)
+  def withParameters(parameters: List[Parameter]): PathItem =
+    if parameters.isEmpty then PathItem(parameters = None)
+    else PathItem(parameters = Some(parameters))
   def setGet(operation: Operation, pathItem: PathItem): PathItem =
     pathItem.copy(get = Some(operation))
   def setPut(operation: Operation, pathItem: PathItem): PathItem =

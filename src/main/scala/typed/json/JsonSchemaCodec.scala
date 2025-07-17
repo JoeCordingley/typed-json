@@ -10,6 +10,7 @@ import scala.util.matching.Regex
 type JsonSchemaCodec = Fix[JsonSchemaCodec.Unfixed]
 
 object JsonSchemaCodec:
+  given encoder: Encoder[JsonSchemaCodec] = Fix.encoder[JsonSchemaCodec.Unfixed]
   type Defs = JsonObject[Map[String, JsonSchemaCodec]]
   type Unfixed[A] = Either[
     Boolean,
@@ -256,14 +257,18 @@ object JsonSchemaCodec:
       .mapN(_ getOrElse _)
       .run
   }
-  val metaSchema: String = "https://json-schema.org/draft/2020-12/schema"
+  val defaultMetaSchema: String = "https://json-schema.org/draft/2020-12/schema"
 
-  def of[A: SchemaOf]: JsonSchemaCodec =
+  def withDefaultMetaSchema[A: SchemaOf]: JsonSchemaCodec = withMetaSchema(
+    Some(defaultMetaSchema)
+  )
+  def withMetaSchema[A: SchemaOf](metaSchema: Option[String]): JsonSchemaCodec =
     val (Defs(defs), anyOf) = summon[SchemaOf[A]].apply.run
     JsonSchemaCodec.fromJsonSchemaWithDefs(
-      Some(metaSchema),
+      metaSchema,
       if defs.isEmpty then None else Some(createDefs(defs))
     )(anyOf)
+  def noMetaSchema[A: SchemaOf]: JsonSchemaCodec = withMetaSchema(None)
 
   given encoder(using
       e: => Encoder[Unfixed[Fix[Unfixed]]]
