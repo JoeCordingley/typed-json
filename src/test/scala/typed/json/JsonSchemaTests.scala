@@ -28,7 +28,7 @@ object JsonSchemaTests extends TestSuite {
   val maybeType = Decoder[Json].at("type").decodeJson
   val maybeAnyOf = Decoder[Json].at("anyOf").decodeJson
   def testFixed[A: SchemaOf](expectedSchema: Json) = {
-    val schema = JsonSchemaCodec.of[A].asJson
+    val schema = JsonSchemaCodec.withDefaultMetaSchema[A].asJson
     assert(schema == expectedSchema)
   }
   val metaSchema =
@@ -93,7 +93,8 @@ object JsonSchemaTests extends TestSuite {
       """)
     }
     test("string or null") {
-      val schema = JsonSchemaCodec.of[Either[String, JsonNull]].asJson
+      val schema =
+        JsonSchemaCodec.withDefaultMetaSchema[Either[String, JsonNull]].asJson
       val expectedSchema = (`type`: Json) => json"""{
           "$$schema": $metaSchema,
           "type": ${`type`}
@@ -108,7 +109,7 @@ object JsonSchemaTests extends TestSuite {
 
     test("object or null") {
       val schema = JsonSchemaCodec
-        .of[
+        .withDefaultMetaSchema[
           Either[JsonObject.Solo[("key", String)], JsonNull]
         ]
         .asJson
@@ -137,7 +138,7 @@ object JsonSchemaTests extends TestSuite {
     }
     test("object or object") {
       val schema = JsonSchemaCodec
-        .of[
+        .withDefaultMetaSchema[
           Either[JsonObject.Solo[("first", String)], JsonObject.Solo[
             ("second", Int)
           ]]
@@ -175,9 +176,11 @@ object JsonSchemaTests extends TestSuite {
     }
     test("object or object or null") {
       val schema = JsonSchemaCodec
-        .of[Either[JsonObject.Solo[("first", String)], Either[JsonObject.Solo[
-          ("second", Int)
-        ], JsonNull]]]
+        .withDefaultMetaSchema[
+          Either[JsonObject.Solo[("first", String)], Either[JsonObject.Solo[
+            ("second", Int)
+          ], JsonNull]]
+        ]
         .asJson
 
       val expectedSchema = (anyOf: Json) => json"""{
@@ -220,7 +223,9 @@ object JsonSchemaTests extends TestSuite {
     }
     test("object or formatted string") {
       val schema = JsonSchemaCodec
-        .of[Either[JsonObject.Solo[("first", String)], Email]]
+        .withDefaultMetaSchema[
+          Either[JsonObject.Solo[("first", String)], Email]
+        ]
         .asJson
       val expectedSchema = (anyOf: Json) => json"""{
         "$$schema": $metaSchema,
@@ -250,7 +255,7 @@ object JsonSchemaTests extends TestSuite {
     }
     test("object with nullable key") {
       val schema = JsonSchemaCodec
-        .of[
+        .withDefaultMetaSchema[
           JsonObject.Solo[("key", Nullable[String])]
         ]
         .asJson
@@ -276,10 +281,12 @@ object JsonSchemaTests extends TestSuite {
     test("object or object or object") {
       val schema =
         JsonSchemaCodec
-          .of[Either[JsonObject.Solo[("first", String)], Either[
-            JsonObject.Solo[("second", Int)],
-            JsonObject.Solo[("third", Boolean)]
-          ]]]
+          .withDefaultMetaSchema[
+            Either[JsonObject.Solo[("first", String)], Either[
+              JsonObject.Solo[("second", Int)],
+              JsonObject.Solo[("third", Boolean)]
+            ]]
+          ]
           .asJson
 
       val expectedSchema = (anyOf: Json) => json"""{
@@ -331,7 +338,7 @@ object JsonSchemaTests extends TestSuite {
     }
     test("object or map object") {
       val schema = JsonSchemaCodec
-        .of[
+        .withDefaultMetaSchema[
           Either[JsonObject.Solo[("key", String)], JsonObject[Map[String, Int]]]
         ]
         .asJson
@@ -361,7 +368,8 @@ object JsonSchemaTests extends TestSuite {
       assert(Right(schema) == maybeAnyOf(schema).map(expectedSchema))
     }
     test("string or formatted string") {
-      val schemaJson = JsonSchemaCodec.of[Either[String, Email]].asJson
+      val schemaJson =
+        JsonSchemaCodec.withDefaultMetaSchema[Either[String, Email]].asJson
       val expectedSchema = (anyOf: Json) => json"""{
         "$$schema": $metaSchema,
         "type": "string",
@@ -384,7 +392,10 @@ object JsonSchemaTests extends TestSuite {
       type MyStringFormat
       given SchemaOf[MyStringFormat] =
         SchemaOf.instance(JsonSchema.string(minLength = Some(5)))
-      val schemaJson = JsonSchemaCodec.of[Either[MyStringFormat, Email]].asJson
+      val schemaJson =
+        JsonSchemaCodec
+          .withDefaultMetaSchema[Either[MyStringFormat, Email]]
+          .asJson
       val expectedSchema = (anyOf: Json) => json"""{
         "$$schema": $metaSchema,
         "type": "string",
@@ -425,7 +436,9 @@ object JsonSchemaTests extends TestSuite {
     }
     test("string enum") {
       val schemaJson =
-        JsonSchemaCodec.of[Either["first case", "second case"]].asJson
+        JsonSchemaCodec
+          .withDefaultMetaSchema[Either["first case", "second case"]]
+          .asJson
       val expectedSchema = (`enum`: Json) => json"""{
         "$$schema": $metaSchema,
         "enum": ${`enum`}
@@ -450,7 +463,9 @@ object JsonSchemaTests extends TestSuite {
 
       val schemaJson =
         JsonSchemaCodec
-          .of[JsonObject[(("first-name", Name), ("second-name", Name))]]
+          .withDefaultMetaSchema[JsonObject[
+            (("first-name", Name), ("second-name", Name))
+          ]]
           .asJson
 
       val expectedSchema = json"""
@@ -482,7 +497,7 @@ object JsonSchemaTests extends TestSuite {
 
       val schemaJson =
         JsonSchemaCodec
-          .of[JsonObject[(("1", Middle), ("2", Middle))]]
+          .withDefaultMetaSchema[JsonObject[(("1", Middle), ("2", Middle))]]
           .asJson
 
       val expectedSchema = json"""
@@ -524,7 +539,7 @@ object JsonSchemaTests extends TestSuite {
 
       val schemaJson =
         JsonSchemaCodec
-          .of[JsonArray[List[Name]]]
+          .withDefaultMetaSchema[JsonArray[List[Name]]]
           .asJson
 
       val expectedSchema = json"""
@@ -548,7 +563,7 @@ object JsonSchemaTests extends TestSuite {
 
       val schemaJson =
         JsonSchemaCodec
-          .of[Either[JsonArray[List[Name]], JsonObject[
+          .withDefaultMetaSchema[Either[JsonArray[List[Name]], JsonObject[
             (("first-name", Name), ("second-name", Name))
           ]]]
           .asJson
@@ -587,7 +602,7 @@ object JsonSchemaTests extends TestSuite {
     }
     test("standalone ref") {
       val schemaJson =
-        JsonSchemaCodec.of[Referenced["name", String]].asJson
+        JsonSchemaCodec.withDefaultMetaSchema[Referenced["name", String]].asJson
       val expectedSchema = json"""
         {
           "$$schema": $metaSchema,
@@ -605,7 +620,9 @@ object JsonSchemaTests extends TestSuite {
     test("recursive ref") {
       type Unfixed[A] = Either[String, JsonObject[(("left", A), ("right", A))]]
       val schemaJson =
-        JsonSchemaCodec.of[RecursiveRef["tree", Unfixed]].asJson
+        JsonSchemaCodec
+          .withDefaultMetaSchema[RecursiveRef["tree", Unfixed]]
+          .asJson
       val expectedFirstSchema: Json = json"""
         {
           "type": "string"

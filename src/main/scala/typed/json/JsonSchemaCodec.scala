@@ -5,10 +5,12 @@ import io.circe.Encoder
 import cats.data.{Kleisli, Reader}
 import cats.syntax.all.*
 import io.circe.Json
+import scala.util.matching.Regex
 
 type JsonSchemaCodec = Fix[JsonSchemaCodec.Unfixed]
 
 object JsonSchemaCodec:
+  given encoder: Encoder[JsonSchemaCodec] = Fix.encoder[JsonSchemaCodec.Unfixed]
   type Defs = JsonObject[Map[String, JsonSchemaCodec]]
   type Unfixed[A] = Either[
     Boolean,
@@ -21,6 +23,7 @@ object JsonSchemaCodec:
           Option[("prefixItems", JsonArray[List[A]])],
           Option[("items", A)],
           Option[("additionalProperties", A)],
+          Option[("patternProperties", JsonObject[Map[Regex, A]])],
           Option[("format", String)],
           Option[("minLength", Int)],
           Option[("maxLength", Int)],
@@ -43,6 +46,7 @@ object JsonSchemaCodec:
       prefixItems: Option[JsonArray[List[JsonSchemaCodec]]] = None,
       items: Option[JsonSchemaCodec] = None,
       additionalProperties: Option[JsonSchemaCodec] = None,
+      patternProperties: Option[JsonObject[Map[Regex, JsonSchemaCodec]]] = None,
       format: Option[String] = None,
       minLength: Option[Int] = None,
       maxLength: Option[Int] = None,
@@ -63,6 +67,7 @@ object JsonSchemaCodec:
           additionalProperties.map(
             "additionalProperties" -> _
           ),
+          patternProperties.map("patternProperties" -> _),
           format.map("format" -> _),
           minLength.map("minLength" -> _),
           maxLength.map("maxLength" -> _),
@@ -116,12 +121,15 @@ object JsonSchemaCodec:
         simplyTyped(SchemaType.Null)
       case JsonSchema.Singular.Integer =>
         simplyTyped(SchemaType.Integer)
-      case JsonSchema.Singular.Object(None, None, None) if removeType =>
+      case JsonSchema.Singular.Object(None, None, None, None, None)
+          if removeType =>
         JsonSchemaCodec.`true`
       case JsonSchema.Singular.Object(
             maybeProperties,
             maybeRequired,
-            maybeAdditionalProperties
+            maybeAdditionalProperties,
+            maybePatternProperties,
+            maybeFormat
           ) =>
         JsonSchemaCodec.`object`(
           `$schema` = metaSchema,
@@ -249,14 +257,18 @@ object JsonSchemaCodec:
       .mapN(_ getOrElse _)
       .run
   }
-  val metaSchema: String = "https://json-schema.org/draft/2020-12/schema"
+  val defaultMetaSchema: String = "https://json-schema.org/draft/2020-12/schema"
 
-  def of[A: SchemaOf]: JsonSchemaCodec =
+  def withDefaultMetaSchema[A: SchemaOf]: JsonSchemaCodec = withMetaSchema(
+    Some(defaultMetaSchema)
+  )
+  def withMetaSchema[A: SchemaOf](metaSchema: Option[String]): JsonSchemaCodec =
     val (Defs(defs), anyOf) = summon[SchemaOf[A]].apply.run
     JsonSchemaCodec.fromJsonSchemaWithDefs(
-      Some(metaSchema),
+      metaSchema,
       if defs.isEmpty then None else Some(createDefs(defs))
     )(anyOf)
+  def noMetaSchema[A: SchemaOf]: JsonSchemaCodec = withMetaSchema(None)
 
   given encoder(using
       e: => Encoder[Unfixed[Fix[Unfixed]]]
